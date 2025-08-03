@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Connection, clusterApiUrl, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js'
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base'
 import {
@@ -17,6 +17,79 @@ import './App.css'
 
 // Importar estilos de wallet UI
 import '@solana/wallet-adapter-react-ui/styles.css'
+
+// Tipos para las notificaciones
+type NotificationType = 'success' | 'error' | 'warning' | 'info'
+
+interface Notification {
+  id: string
+  type: NotificationType
+  title: string
+  message: string
+  duration?: number
+}
+
+// Componente de notificaciones
+const NotificationContainer = ({ 
+  notifications, 
+  removeNotification 
+}: {
+  notifications: Notification[]
+  removeNotification: (id: string) => void
+}) => {
+  return (
+    <div className="notification-container">
+      {notifications.map((notification) => (
+        <NotificationCard
+          key={notification.id}
+          notification={notification}
+          onClose={() => removeNotification(notification.id)}
+        />
+      ))}
+    </div>
+  )
+}
+
+const NotificationCard = ({
+  notification,
+  onClose
+}: {
+  notification: Notification
+  onClose: () => void
+}) => {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onClose()
+    }, notification.duration || 5000)
+
+    return () => clearTimeout(timer)
+  }, [notification.duration, onClose])
+
+  const getIcon = (type: NotificationType) => {
+    switch (type) {
+      case 'success': return '✅'
+      case 'error': return '❌'
+      case 'warning': return '⚠️'
+      case 'info': return 'ℹ️'
+      default: return 'ℹ️'
+    }
+  }
+
+  return (
+    <div className={`notification-card notification-${notification.type}`}>
+      <div className="notification-icon">
+        {getIcon(notification.type)}
+      </div>
+      <div className="notification-content">
+        <h4>{notification.title}</h4>
+        <p>{notification.message}</p>
+      </div>
+      <button className="notification-close" onClick={onClose}>
+        ×
+      </button>
+    </div>
+  )
+}
 
 // Componente para mostrar información del wallet
 const WalletInfo = () => {
@@ -134,11 +207,27 @@ const AppContent = () => {
   const [activeTab, setActiveTab] = useState('explore')
   const [showContributeModal, setShowContributeModal] = useState(false)
   const [selectedProject, setSelectedProject] = useState<any>(null)
+  const [notifications, setNotifications] = useState<Notification[]>([])
   const { connected, publicKey } = useWallet()
+
+  // Función para agregar notificaciones
+  const addNotification = (notification: Omit<Notification, 'id'>) => {
+    const id = Date.now().toString()
+    setNotifications(prev => [...prev, { ...notification, id }])
+  }
+
+  // Función para remover notificaciones
+  const removeNotification = (id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id))
+  }
 
   const handleContribute = (project: any) => {
     if (!connected) {
-      alert('Por favor conecta tu wallet primero')
+      addNotification({
+        type: 'warning',
+        title: 'Wallet no conectado',
+        message: 'Por favor conecta tu wallet para contribuir a este proyecto'
+      })
       return
     }
     setSelectedProject(project)
@@ -355,8 +444,15 @@ const AppContent = () => {
         <ContributeModal 
           project={selectedProject}
           onClose={() => setShowContributeModal(false)}
+          addNotification={addNotification}
         />
       )}
+
+      {/* Sistema de notificaciones */}
+      <NotificationContainer 
+        notifications={notifications}
+        removeNotification={removeNotification}
+      />
     </div>
   )
 }
@@ -364,26 +460,43 @@ const AppContent = () => {
 // Modal para contribuir a un proyecto
 const ContributeModal = ({ 
   project, 
-  onClose 
+  onClose,
+  addNotification
 }: {
   project: any
   onClose: () => void
+  addNotification: (notification: Omit<Notification, 'id'>) => void
 }) => {
   const [amount, setAmount] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
   const { connection } = useConnection()
   const { publicKey, sendTransaction } = useWallet()
 
   const handleContribute = async () => {
     if (!publicKey || !amount) return
 
+    setIsLoading(true)
+    
     try {
-      // Aquí iría la lógica para crear y enviar la transacción
-      // Por ahora solo mostramos un mensaje de éxito
-      alert(`¡Contribución de ${amount} SOL enviada exitosamente!`)
+      // Simulamos una transacción (aquí iría la lógica real de Solana)
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      
+      addNotification({
+        type: 'success',
+        title: '¡Contribución exitosa!',
+        message: `Has contribuido ${amount} SOL al proyecto "${project.title}"`
+      })
+      
       onClose()
     } catch (error) {
       console.error('Error en contribución:', error)
-      alert('Error al enviar la contribución')
+      addNotification({
+        type: 'error',
+        title: 'Error en la contribución',
+        message: 'No se pudo procesar la transacción. Inténtalo de nuevo.'
+      })
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -421,9 +534,16 @@ const ContributeModal = ({
               <button 
                 className="confirm-btn" 
                 onClick={handleContribute}
-                disabled={!amount || parseFloat(amount) <= 0}
+                disabled={!amount || parseFloat(amount) <= 0 || isLoading}
               >
-                Contribuir {amount} SOL
+                {isLoading ? (
+                  <>
+                    <span className="loading-spinner"></span>
+                    Procesando...
+                  </>
+                ) : (
+                  `Contribuir ${amount} SOL`
+                )}
               </button>
             </div>
           </div>

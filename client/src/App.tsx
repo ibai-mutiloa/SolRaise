@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from 'react'
-import { Connection, clusterApiUrl, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { Connection, clusterApiUrl, PublicKey, LAMPORTS_PER_SOL, Transaction, SystemProgram } from '@solana/web3.js'
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base'
 import {
   ConnectionProvider,
@@ -46,6 +46,119 @@ const NotificationContainer = ({
           onClose={() => removeNotification(notification.id)}
         />
       ))}
+    </div>
+  )
+}
+
+// Modal de donación
+const DonationModal = ({ 
+  project, 
+  onClose, 
+  onDonate 
+}: {
+  project: any
+  onClose: () => void
+  onDonate: (amount: number) => Promise<boolean>
+}) => {
+  const [donationAmount, setDonationAmount] = useState('')
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [localProject, setLocalProject] = useState(project)
+
+  // Actualizar localProject cuando project cambie
+  useEffect(() => {
+    setLocalProject(project)
+  }, [project])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    const amount = parseFloat(donationAmount)
+    if (isNaN(amount) || amount <= 0) {
+      alert('Por favor ingresa una cantidad válida')
+      return
+    }
+
+    setIsProcessing(true)
+    const success = await onDonate(amount)
+    setIsProcessing(false)
+    
+    if (success) {
+      onClose()
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Contribuir al Proyecto</h2>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+        
+        <div className="modal-body">
+          <div className="project-info">
+            <h3>{localProject.title}</h3>
+            <p>Meta: {localProject.goal} SOL</p>
+            <p>Recaudado: {localProject.raised} SOL</p>
+            <div className="progress-bar">
+              <div 
+                className="progress-fill" 
+                style={{ width: `${Math.min((localProject.raised / localProject.goal) * 100, 100)}%` }}
+              ></div>
+            </div>
+            <p className="progress-percentage">
+              {((localProject.raised / localProject.goal) * 100).toFixed(1)}% completado
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="donation-form">
+            <div className="form-group">
+              <label htmlFor="donation-amount">Cantidad a donar (SOL)</label>
+              <input
+                type="number"
+                id="donation-amount"
+                value={donationAmount}
+                onChange={(e) => setDonationAmount(e.target.value)}
+                placeholder="0.1"
+                min="0.001"
+                step="0.001"
+                required
+                disabled={isProcessing}
+              />
+            </div>
+
+            <div className="donation-buttons">
+              <button 
+                type="button" 
+                className="btn-secondary" 
+                onClick={onClose}
+                disabled={isProcessing}
+              >
+                Cancelar
+              </button>
+              <button 
+                type="submit" 
+                className="btn-primary"
+                disabled={isProcessing}
+              >
+                {isProcessing ? 'Procesando...' : 'Donar SOL'}
+              </button>
+            </div>
+          </form>
+
+          <div className="donation-info">
+            <p><strong>⚠️ Importante:</strong></p>
+            <ul>
+              <li>Esta transacción será procesada en la blockchain de Solana</li>
+              <li>Necesitarás confirmar la transacción en tu wallet</li>
+              <li>Las transacciones son irreversibles</li>
+              <li>Se aplicarán tarifas de red de Solana (~0.000005 SOL)</li>
+              <li>La confirmación puede tomar hasta 60 segundos</li>
+              <li>Puedes verificar tu transacción en Solana Explorer</li>
+            </ul>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -133,6 +246,71 @@ const WalletInfo = () => {
   )
 }
 
+// Componente para verificar transacciones manualmente
+const TransactionVerifier = ({ verifyTransaction }: { verifyTransaction: (signature: string) => Promise<void> }) => {
+  const [signature, setSignature] = useState('')
+  const [isVerifying, setIsVerifying] = useState(false)
+
+  const handleVerify = async () => {
+    if (!signature.trim()) return
+    
+    setIsVerifying(true)
+    try {
+      await verifyTransaction(signature.trim())
+    } finally {
+      setIsVerifying(false)
+      setSignature('')
+    }
+  }
+
+  const handlePasteExample = () => {
+    setSignature('49KGUCiTjcFcYENC9NhLxfzPoxJQFxgqD3X2d1KuTpRDtFaABpzR7iigwBqmPqNQLjKRSA8k1N9oA36zrT2Dptvf')
+  }
+
+  return (
+    <div className="transaction-verifier">
+      <div className="verifier-header">
+        <h3>🔍 Verificar Transacción</h3>
+        <p>Verifica el estado de una transacción de Solana</p>
+        <small>Si tu donación dio timeout, puedes verificar su estado aquí</small>
+      </div>
+      <div className="verifier-input">
+        <input
+          type="text"
+          placeholder="Ingresa la signature de la transacción..."
+          value={signature}
+          onChange={(e) => setSignature(e.target.value)}
+          className="signature-input"
+        />
+        <button
+          onClick={handleVerify}
+          disabled={!signature.trim() || isVerifying}
+          className="verify-btn"
+        >
+          {isVerifying ? 'Verificando...' : 'Verificar'}
+        </button>
+      </div>
+      <div className="verifier-actions">
+        <button
+          onClick={handlePasteExample}
+          className="paste-example-btn"
+          disabled={isVerifying}
+        >
+          Pegar signature de ejemplo
+        </button>
+        <a
+          href={signature.trim() ? `https://explorer.solana.com/tx/${signature.trim()}?cluster=devnet` : '#'}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`explorer-link ${!signature.trim() ? 'disabled' : ''}`}
+        >
+          Ver en Solana Explorer 🔗
+        </a>
+      </div>
+    </div>
+  )
+}
+
 // Componente para las tarjetas de proyectos
 const ProjectCard = ({ 
   title, 
@@ -208,18 +386,19 @@ const AppContent = () => {
   const [showContributeModal, setShowContributeModal] = useState(false)
   const [selectedProject, setSelectedProject] = useState<any>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
-  const { connected, publicKey } = useWallet()
+  const { connected, publicKey, sendTransaction } = useWallet()
+  const { connection } = useConnection()
 
   // Función para agregar notificaciones
-  const addNotification = (notification: Omit<Notification, 'id'>) => {
+  const addNotification = useCallback((notification: Omit<Notification, 'id'>) => {
     const id = Date.now().toString()
     setNotifications(prev => [...prev, { ...notification, id }])
-  }
+  }, [])
 
   // Función para remover notificaciones
-  const removeNotification = (id: string) => {
+  const removeNotification = useCallback((id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id))
-  }
+  }, [])
 
   const handleContribute = (project: any) => {
     if (!connected) {
@@ -232,6 +411,18 @@ const AppContent = () => {
     }
     setSelectedProject(project)
     setShowContributeModal(true)
+  }
+
+  const handleDonation = async (amount: number): Promise<boolean> => {
+    if (!selectedProject) return false
+    const success = await processDonation(selectedProject, amount)
+    if (success) {
+      // Actualizar automáticamente el estado de los proyectos
+      await refreshProjectsData()
+      // También actualizar las estadísticas
+      await refreshStats()
+    }
+    return success
   }
 
   // Estado para los proyectos desde la API
@@ -250,6 +441,20 @@ const AppContent = () => {
   // Estado para las categorías desde la API
   const [categories, setCategories] = useState<any[]>([])
   const [loadingCategories, setLoadingCategories] = useState(true)
+
+  // Estado para los proyectos del usuario
+  const [userProjects, setUserProjects] = useState<any[]>([])
+  const [loadingUserProjects, setLoadingUserProjects] = useState(false)
+
+  // Estado para el formulario de crear proyecto
+  const [createProjectForm, setCreateProjectForm] = useState({
+    title: '',
+    description: '',
+    goal_amount: '',
+    category: '',
+    deadline: ''
+  })
+  const [isCreatingProject, setIsCreatingProject] = useState(false)
 
   // Cargar proyectos desde la API
   useEffect(() => {
@@ -270,7 +475,7 @@ const AppContent = () => {
           raised: project.current_amount,
           goal: project.goal_amount,
           daysLeft: project.deadline ? Math.max(0, Math.ceil((new Date(project.deadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))) : 0,
-          image: "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=400&h=250&fit=crop",
+          image: getCategoryImage(project.category),
           category: project.category,
           creator_wallet: project.creator_wallet
         }))
@@ -292,7 +497,9 @@ const AppContent = () => {
             raised: 1250,
             goal: 5000,
             daysLeft: 15,
-            image: "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=400&h=250&fit=crop"
+            image: getCategoryImage("Gaming"),
+            category: "Gaming",
+            creator_wallet: "SoL4n4WALLETtest1234567890abc"
           }
         ])
       } finally {
@@ -357,6 +564,460 @@ const AppContent = () => {
     loadCategories()
   }, [])
 
+  // Función para cargar proyectos del usuario
+  const loadUserProjects = useCallback(async () => {
+    console.log('loadUserProjects called', { connected, publicKey: publicKey?.toString() })
+    
+    if (!connected || !publicKey) {
+      console.log('Wallet not connected, returning')
+      return
+    }
+
+    try {
+      console.log('Starting to load user projects...')
+      setLoadingUserProjects(true)
+      const walletAddress = publicKey.toString()
+      console.log('Fetching projects for wallet:', walletAddress)
+      
+      const response = await fetch(`http://localhost:3000/projects/user/${walletAddress}`)
+      console.log('Response status:', response.status)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      const data = await response.json()
+      console.log('Raw data from API:', data)
+      
+      // Verificar si data es un array
+      if (!Array.isArray(data)) {
+        console.error('API did not return an array:', data)
+        throw new Error('Invalid data format from API')
+      }
+      
+      // Transformar los datos para que coincidan con el formato esperado por el frontend
+      const transformedProjects = data.map((project: any) => {
+        console.log('Transforming project:', project)
+        return {
+          id: project.id,
+          title: project.title,
+          description: project.description,
+          raised: parseFloat(project.current_amount) || 0,
+          goal: parseFloat(project.goal_amount) || 0,
+          daysLeft: project.deadline ? Math.max(0, Math.ceil((new Date(project.deadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))) : 0,
+          image: getCategoryImage(project.category),
+          category: project.category,
+          creator_wallet: project.creator_wallet
+        }
+      })
+      
+      console.log('Transformed projects:', transformedProjects)
+      setUserProjects(transformedProjects)
+      
+      addNotification({
+        type: 'success',
+        title: 'Éxito',
+        message: `Se cargaron ${transformedProjects.length} proyectos`
+      })
+      
+    } catch (error) {
+      console.error('Error cargando proyectos del usuario:', error)
+      addNotification({
+        type: 'error',
+        title: 'Error',
+        message: `No se pudieron cargar tus proyectos: ${error instanceof Error ? error.message : 'Error desconocido'}`
+      })
+    } finally {
+      console.log('Setting loading to false')
+      setLoadingUserProjects(false)
+    }
+  }, [connected, publicKey, addNotification])
+
+  // Función para procesar donación con Solana
+  const processDonation = useCallback(async (project: any, donationAmount: number) => {
+    if (!connected || !publicKey || !sendTransaction) {
+      addNotification({
+        type: 'error',
+        title: 'Wallet no conectado',
+        message: 'Por favor conecta tu wallet para donar'
+      })
+      return false
+    }
+
+    try {
+      console.log('Processing donation...', { project, donationAmount })
+      
+      // Convertir la cantidad de SOL a lamports
+      const lamports = donationAmount * LAMPORTS_PER_SOL
+      console.log('Donation amount in lamports:', lamports)
+
+      // Crear la dirección pública del creador del proyecto
+      const creatorPublicKey = new PublicKey(project.creator_wallet)
+      console.log('Creator wallet:', project.creator_wallet)
+
+      // Crear la transacción de transferencia
+      const transaction = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: publicKey,
+          toPubkey: creatorPublicKey,
+          lamports: lamports,
+        })
+      )
+
+      console.log('Transaction created, requesting signature...')
+      
+      // Enviar la transacción y obtener la signatura
+      const signature = await sendTransaction(transaction, connection)
+      console.log('Transaction signature:', signature)
+
+      addNotification({
+        type: 'info',
+        title: 'Transacción enviada',
+        message: 'Esperando confirmación en la blockchain...'
+      })
+
+      // Esperar confirmación de la transacción con timeout extendido
+      console.log('Waiting for transaction confirmation...')
+      
+      try {
+        // Intentar confirmar con timeout extendido
+        const confirmation = await Promise.race([
+          connection.confirmTransaction(signature, 'confirmed'),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('TIMEOUT')), 60000) // 60 segundos
+          )
+        ]) as any
+        
+        if (confirmation.value && confirmation.value.err) {
+          throw new Error('Transaction failed: ' + confirmation.value.err)
+        }
+        
+        console.log('Transaction confirmed successfully')
+        
+      } catch (timeoutError: any) {
+        if (timeoutError.message === 'TIMEOUT') {
+          console.log('Transaction timeout, checking status...')
+          
+          // Verificar el estado de la transacción manualmente
+          try {
+            const status = await connection.getSignatureStatus(signature)
+            console.log('Transaction status:', status)
+            
+            if (status.value?.confirmationStatus === 'confirmed' || 
+                status.value?.confirmationStatus === 'finalized') {
+              console.log('Transaction was actually confirmed!')
+            } else if (status.value?.err) {
+              throw new Error('Transaction failed: ' + status.value.err)
+            } else {
+              // La transacción está pendiente, continuar de todos modos
+              addNotification({
+                type: 'warning',
+                title: 'Transacción Pendiente',
+                message: `La transacción está pendiente de confirmación. Signature: ${signature.slice(0, 8)}...`
+              })
+              console.log('Transaction is still pending, proceeding...')
+            }
+          } catch (statusError) {
+            console.error('Error checking transaction status:', statusError)
+            throw new Error(`Transaction timeout. Please check signature ${signature} in Solana Explorer`)
+          }
+        } else {
+          throw timeoutError
+        }
+      }
+
+      console.log('Transaction confirmed, recording in database...')
+
+      // Registrar la donación en la base de datos
+      try {
+        await recordDonation({
+          project_id: project.id,
+          donor_wallet: publicKey.toString(),
+          amount: donationAmount,
+          tx_signature: signature
+        })
+        console.log('Donation recorded successfully in database')
+      } catch (dbError) {
+        console.error('Error recording donation in database:', dbError)
+        // Continuar incluso si falla el registro en BD, la transacción blockchain ya se completó
+        addNotification({
+          type: 'warning',
+          title: 'Advertencia',
+          message: 'La donación se completó en blockchain pero hubo un error al registrarla en la base de datos'
+        })
+      }
+
+      // Mostrar feedback inmediato actualizar el proyecto localmente
+      const updatedProject = {
+        ...project,
+        raised: project.raised + donationAmount
+      }
+      
+      // Actualizar el proyecto seleccionado inmediatamente para feedback visual
+      setSelectedProject(updatedProject)
+
+      addNotification({
+        type: 'success',
+        title: '¡Donación exitosa!',
+        message: `Has donado ${donationAmount} SOL al proyecto "${project.title}". Signature: ${signature.slice(0, 8)}...`
+      })
+
+      // Mostrar enlace al explorer en consola para debugging
+      console.log(`Transaction completed! View on Solana Explorer: https://explorer.solana.com/tx/${signature}?cluster=devnet`)
+
+      return true
+
+    } catch (error: any) {
+      console.error('Error processing donation:', error)
+      
+      // Capturar errores específicos de timeout de transacción
+      if (error.message && error.message.includes('Transaction was not confirmed')) {
+        const signatureMatch = error.message.match(/signature\s+([A-Za-z0-9]+)/);
+        const signature = signatureMatch ? signatureMatch[1] : null;
+        
+        if (signature) {
+          console.log('Caught transaction timeout with signature:', signature);
+          
+          // Verificar el estado de la transacción manualmente
+          try {
+            console.log('Checking transaction status manually...');
+            const status = await connection.getSignatureStatus(signature);
+            console.log('Manual status check result:', status);
+            
+            if (status.value?.confirmationStatus === 'confirmed' || 
+                status.value?.confirmationStatus === 'finalized') {
+              console.log('Transaction was actually confirmed! Recording in database...');
+              
+              // La transacción está confirmada, registrar en BD
+              try {
+                await recordDonation({
+                  project_id: project.id,
+                  donor_wallet: publicKey.toString(),
+                  amount: donationAmount,
+                  tx_signature: signature
+                });
+                
+                // Actualizar UI
+                const updatedProject = {
+                  ...project,
+                  raised: project.raised + donationAmount
+                };
+                setSelectedProject(updatedProject);
+                
+                addNotification({
+                  type: 'success',
+                  title: '¡Donación confirmada!',
+                  message: `La transacción se completó exitosamente. Signature: ${signature.slice(0, 8)}...`
+                });
+                
+                // Refrescar datos
+                await refreshProjectsData();
+                await refreshStats();
+                
+                console.log(`Transaction confirmed! View on Solana Explorer: https://explorer.solana.com/tx/${signature}?cluster=devnet`);
+                return true;
+                
+              } catch (dbError) {
+                console.error('Error recording confirmed donation:', dbError);
+                addNotification({
+                  type: 'warning',
+                  title: 'Transacción Exitosa',
+                  message: `La donación se completó pero hubo un error al registrarla. Verifica manualmente: ${signature.slice(0, 8)}...`
+                });
+                return true; // La transacción blockchain fue exitosa
+              }
+              
+            } else if (status.value?.err) {
+              addNotification({
+                type: 'error',
+                title: 'Transacción Fallida',
+                message: `La transacción falló: ${status.value.err}`
+              });
+              return false;
+              
+            } else {
+              // Transacción pendiente
+              addNotification({
+                type: 'warning',
+                title: 'Transacción Pendiente',
+                message: `La transacción está pendiente. Usa el verificador para chequear el estado: ${signature.slice(0, 8)}...`
+              });
+              
+              console.log(`Transaction pending! View on Solana Explorer: https://explorer.solana.com/tx/${signature}?cluster=devnet`);
+              return false;
+            }
+            
+          } catch (statusError) {
+            console.error('Error checking transaction status:', statusError);
+            addNotification({
+              type: 'error',
+              title: 'Error de Verificación',
+              message: `No se pudo verificar la transacción. Verifica manualmente en Solana Explorer: ${signature.slice(0, 8)}...`
+            });
+            return false;
+          }
+        }
+      }
+      
+      // Error general
+      addNotification({
+        type: 'error',
+        title: 'Error en la donación',
+        message: error instanceof Error ? error.message : 'Error desconocido al procesar la donación'
+      })
+      return false
+    }
+  }, [connected, publicKey, sendTransaction, connection, addNotification])
+
+  // Función para registrar donación en la base de datos
+  const recordDonation = useCallback(async (donationData: {
+    project_id: number
+    donor_wallet: string
+    amount: number
+    tx_signature: string
+  }) => {
+    try {
+      // Primero crear o obtener el usuario donante
+      const userResponse = await fetch('http://localhost:3000/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          wallet_address: donationData.donor_wallet
+        })
+      })
+
+      if (!userResponse.ok) {
+        throw new Error('Error creating donor user')
+      }
+
+      const user = await userResponse.json()
+      console.log('Donor user:', user)
+
+      // Registrar la donación
+      const donationResponse = await fetch('http://localhost:3000/donations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          donor_id: user.id,
+          project_id: donationData.project_id,
+          amount: donationData.amount,
+          tx_signature: donationData.tx_signature
+        })
+      })
+
+      if (!donationResponse.ok) {
+        throw new Error('Error recording donation')
+      }
+
+      const donation = await donationResponse.json()
+      console.log('Donation recorded:', donation)
+
+      return donation
+
+    } catch (error) {
+      console.error('Error recording donation in database:', error)
+      throw error
+    }
+  }, [])
+
+  // Función para refrescar datos de proyectos
+  const refreshProjectsData = useCallback(async () => {
+    try {
+      console.log('Refreshing projects data...')
+      const response = await fetch('http://localhost:3000/projects')
+      if (!response.ok) {
+        throw new Error('Error al recargar proyectos')
+      }
+      const data = await response.json()
+      
+      // Transformar los datos para que coincidan con el formato esperado por el frontend
+      const transformedProjects = data.map((project: any) => ({
+        id: project.id,
+        title: project.title,
+        description: project.description,
+        raised: project.current_amount,
+        goal: project.goal_amount,
+        daysLeft: project.deadline ? Math.max(0, Math.ceil((new Date(project.deadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))) : 0,
+        image: getCategoryImage(project.category),
+        category: project.category,
+        creator_wallet: project.creator_wallet
+      }))
+      
+      setFeaturedProjects(transformedProjects)
+      
+      // Si hay un proyecto seleccionado, actualizarlo también
+      if (selectedProject) {
+        const updatedProject = transformedProjects.find((p: any) => p.id === selectedProject.id)
+        if (updatedProject) {
+          setSelectedProject(updatedProject)
+        }
+      }
+      
+      console.log('Projects data refreshed successfully')
+    } catch (error) {
+      console.error('Error refreshing projects:', error)
+    }
+  }, [selectedProject])
+
+  // Función para refrescar estadísticas
+  const refreshStats = useCallback(async () => {
+    try {
+      console.log('Refreshing stats...')
+      const response = await fetch('http://localhost:3000/stats')
+      if (!response.ok) {
+        throw new Error('Error al cargar estadísticas')
+      }
+      const data = await response.json()
+      setStats(data)
+      console.log('Stats refreshed successfully')
+    } catch (error) {
+      console.error('Error refreshing stats:', error)
+    }
+  }, [])
+
+  // Función para verificar una transacción manualmente
+  const verifyTransaction = useCallback(async (signature: string) => {
+    try {
+      const status = await connection.getSignatureStatus(signature)
+      console.log('Transaction status:', status)
+      
+      if (status.value?.confirmationStatus === 'confirmed' || 
+          status.value?.confirmationStatus === 'finalized') {
+        addNotification({
+          type: 'success',
+          title: 'Transacción Confirmada',
+          message: `La transacción ${signature.slice(0, 8)}... ha sido confirmada exitosamente`
+        })
+        // Refrescar datos después de confirmar
+        await refreshProjectsData()
+        await refreshStats()
+      } else if (status.value?.err) {
+        addNotification({
+          type: 'error',
+          title: 'Transacción Fallida',
+          message: `La transacción falló: ${status.value.err}`
+        })
+      } else {
+        addNotification({
+          type: 'info',
+          title: 'Transacción Pendiente',
+          message: `La transacción ${signature.slice(0, 8)}... aún está pendiente`
+        })
+      }
+    } catch (error) {
+      console.error('Error verificando transacción:', error)
+      addNotification({
+        type: 'error',
+        title: 'Error de Verificación',
+        message: 'No se pudo verificar el estado de la transacción'
+      })
+    }
+  }, [connection, addNotification, refreshProjectsData, refreshStats])
+
   // Función para obtener el icono de la categoría
   const getCategoryIcon = (categoryName: string) => {
     const icons: { [key: string]: string } = {
@@ -369,6 +1030,135 @@ const AppContent = () => {
       'default': '📦'
     }
     return icons[categoryName] || icons['default']
+  }
+
+  // Función para obtener imagen específica por categoría
+  const getCategoryImage = (categoryName: string) => {
+    const images: { [key: string]: string } = {
+      'Gaming': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=400&h=250&fit=crop&auto=format',
+      'DeFi': 'https://images.unsplash.com/photo-1639762681485-074b7f938ba0?w=400&h=250&fit=crop&auto=format',
+      'NFT': 'https://images.unsplash.com/photo-1634973357973-f2ed2657db3c?w=400&h=250&fit=crop&auto=format',
+      'Green Tech': 'https://images.unsplash.com/photo-1497435334941-8c899ee9e8e9?w=400&h=250&fit=crop&auto=format',
+      'Educación': 'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=400&h=250&fit=crop&auto=format',
+      'Herramientas': 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=400&h=250&fit=crop&auto=format',
+      'Sostenibilidad': 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=400&h=250&fit=crop&auto=format',
+      'Energía': 'https://images.unsplash.com/photo-1466611653911-95081537e5b7?w=400&h=250&fit=crop&auto=format',
+      'Other': 'https://images.unsplash.com/photo-1553877522-43269d4ea984?w=400&h=250&fit=crop&auto=format',
+      'default': 'https://images.unsplash.com/photo-1553877522-43269d4ea984?w=400&h=250&fit=crop&auto=format'
+    }
+    return images[categoryName] || images['default']
+  }
+
+  // Función para manejar cambios en el formulario de crear proyecto
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target
+    setCreateProjectForm(prev => ({
+      ...prev,
+      [name]: value
+    }))
+  }
+
+  // Función para crear un nuevo proyecto
+  const handleCreateProject = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!connected || !publicKey) {
+      addNotification({
+        type: 'error',
+        title: 'Error',
+        message: 'Debes conectar tu wallet para crear un proyecto'
+      })
+      return
+    }
+
+    if (!createProjectForm.title || !createProjectForm.description || !createProjectForm.goal_amount) {
+      addNotification({
+        type: 'error',
+        title: 'Error',
+        message: 'Por favor completa todos los campos obligatorios'
+      })
+      return
+    }
+
+    try {
+      setIsCreatingProject(true)
+      
+      // First, create or get user
+      const userResponse = await fetch('http://localhost:3000/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          wallet_address: publicKey.toString()
+        })
+      })
+      
+      let userData
+      if (userResponse.ok) {
+        userData = await userResponse.json()
+      } else {
+        // If user already exists, get the user
+        const getUserResponse = await fetch(`http://localhost:3000/users/${publicKey.toString()}`)
+        if (getUserResponse.ok) {
+          userData = await getUserResponse.json()
+        } else {
+          throw new Error('Error creating or finding user')
+        }
+      }
+
+      // Create the project
+      const projectData = {
+        creator_id: userData.id,
+        title: createProjectForm.title,
+        description: createProjectForm.description,
+        goal_amount: parseFloat(createProjectForm.goal_amount),
+        category: createProjectForm.category || 'Other',
+        deadline: createProjectForm.deadline ? new Date(createProjectForm.deadline).toISOString() : null
+      }
+
+      const response = await fetch('http://localhost:3000/projects', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(projectData)
+      })
+
+      if (response.ok) {
+        const newProject = await response.json()
+        addNotification({
+          type: 'success',
+          title: 'Éxito',
+          message: 'Proyecto creado exitosamente!'
+        })
+        
+        // Reset form
+        setCreateProjectForm({
+          title: '',
+          description: '',
+          goal_amount: '',
+          category: '',
+          deadline: ''
+        })
+        
+        // Switch to explore tab and reload projects
+        setActiveTab('explore')
+        // Reload projects to show the new one
+        window.location.reload()
+      } else {
+        throw new Error('Error creating project')
+      }
+    } catch (error) {
+      console.error('Error creating project:', error)
+      addNotification({
+        type: 'error',
+        title: 'Error',
+        message: 'Error al crear el proyecto. Inténtalo de nuevo.'
+      })
+    } finally {
+      setIsCreatingProject(false)
+    }
   }
 
   return (
@@ -409,25 +1199,236 @@ const AppContent = () => {
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="hero">
-        <div className="container">
-          <div className="hero-content">
-            <h1>Impulsa el futuro con <span className="highlight">Solana</span></h1>
-            <p>
-              Descubre y financia proyectos innovadores en el ecosistema Solana. 
-              Rápido, seguro y descentralizado.
-            </p>
-            <div className="hero-actions">
-              <button className="cta-btn primary">Explorar Proyectos</button>
-              <button className="cta-btn secondary">Crear Proyecto</button>
+      {/* Hero Section - Only show in explore tab */}
+      {activeTab === 'explore' && (
+        <section className="hero">
+          <div className="container">
+            <div className="hero-content">
+              <h1>Impulsa el futuro con <span className="highlight">Solana</span></h1>
+              <p>
+                Descubre y financia proyectos innovadores en el ecosistema Solana. 
+                Rápido, seguro y descentralizado.
+              </p>
+              <div className="hero-actions">
+                <button className="cta-btn primary" onClick={() => setActiveTab('explore')}>Explorar Proyectos</button>
+                <button className="cta-btn secondary" onClick={() => setActiveTab('create')}>Crear Proyecto</button>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
-      {/* Stats Section */}
-      <section className="stats">
+      {/* Create Project Form */}
+      {activeTab === 'create' && (
+        <section className="create-project">
+          <div className="container">
+            <div className="create-project-content">
+              <h1>Crear Nuevo Proyecto</h1>
+              <p>Comparte tu idea innovadora con la comunidad Solana</p>
+              
+              <form onSubmit={handleCreateProject} className="create-project-form">
+                <div className="form-group">
+                  <label htmlFor="title">Título del Proyecto *</label>
+                  <input
+                    type="text"
+                    id="title"
+                    name="title"
+                    value={createProjectForm.title}
+                    onChange={handleFormChange}
+                    placeholder="Ingresa el título de tu proyecto"
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="description">Descripción *</label>
+                  <textarea
+                    id="description"
+                    name="description"
+                    value={createProjectForm.description}
+                    onChange={handleFormChange}
+                    placeholder="Describe tu proyecto en detalle..."
+                    rows={4}
+                    required
+                  />
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="goal_amount">Meta de Financiación (SOL) *</label>
+                    <input
+                      type="number"
+                      id="goal_amount"
+                      name="goal_amount"
+                      value={createProjectForm.goal_amount}
+                      onChange={handleFormChange}
+                      placeholder="1000"
+                      min="1"
+                      step="0.01"
+                      required
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="category">Categoría</label>
+                    <select
+                      id="category"
+                      name="category"
+                      value={createProjectForm.category}
+                      onChange={handleFormChange}
+                    >
+                      <option value="">Selecciona una categoría</option>
+                      <option value="Gaming">Gaming</option>
+                      <option value="DeFi">DeFi</option>
+                      <option value="NFT">NFT</option>
+                      <option value="Green Tech">Green Tech</option>
+                      <option value="Educación">Educación</option>
+                      <option value="Other">Otros</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="deadline">Fecha Límite</label>
+                  <input
+                    type="datetime-local"
+                    id="deadline"
+                    name="deadline"
+                    value={createProjectForm.deadline}
+                    onChange={handleFormChange}
+                    min={new Date().toISOString().slice(0, 16)}
+                  />
+                </div>
+
+                <div className="form-actions">
+                  <button 
+                    type="button" 
+                    className="btn-secondary"
+                    onClick={() => setActiveTab('explore')}
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="btn-primary"
+                    disabled={isCreatingProject}
+                  >
+                    {isCreatingProject ? 'Creando...' : 'Crear Proyecto'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* My Projects Section */}
+      {activeTab === 'my-projects' && (
+        <section className="my-projects">
+          <div className="container">
+            <div className="my-projects-content">
+              <h1>Mis Proyectos</h1>
+              <p>Gestiona y monitorea tus proyectos de crowdfunding</p>
+              
+              {!connected ? (
+                <div className="wallet-connect-message">
+                  <h3>🔗 Conecta tu Wallet</h3>
+                  <p>Para ver tus proyectos, necesitas conectar tu wallet de Solana</p>
+                  <WalletMultiButton className="wallet-btn" />
+                </div>
+              ) : (
+                <div className="my-projects-actions">
+                  <p>Wallet conectado: {publicKey?.toString().slice(0, 8)}...</p>
+                  <button 
+                    className="btn-primary"
+                    onClick={async () => {
+                      try {
+                        console.log('Button clicked, calling loadUserProjects')
+                        await loadUserProjects()
+                        console.log('loadUserProjects completed successfully')
+                      } catch (error) {
+                        console.error('Error in button click:', error)
+                        addNotification({
+                          type: 'error',
+                          title: 'Error',
+                          message: 'Error al hacer clic en el botón'
+                        })
+                      }
+                    }}
+                    disabled={loadingUserProjects}
+                  >
+                    {loadingUserProjects ? 'Cargando...' : 'Cargar Mis Proyectos'}
+                  </button>
+                  
+                  {loadingUserProjects && (
+                    <div className="loading">
+                      <p>Cargando tus proyectos...</p>
+                    </div>
+                  )}
+                  
+                  {!loadingUserProjects && userProjects.length === 0 && (
+                    <div className="no-projects">
+                      <h3>📝 No tienes proyectos aún</h3>
+                      <p>¡Comienza creando tu primer proyecto y comparte tu idea con la comunidad!</p>
+                      <button 
+                        className="btn-primary"
+                        onClick={() => setActiveTab('create')}
+                      >
+                        Crear Mi Primer Proyecto
+                      </button>
+                    </div>
+                  )}
+                  
+                  {!loadingUserProjects && userProjects.length > 0 && (
+                    <>
+                      <div className="projects-summary">
+                        <h3>Resumen de tus proyectos</h3>
+                        <div className="summary-stats">
+                          <div className="summary-card">
+                            <span className="summary-number">{userProjects.length}</span>
+                            <span className="summary-label">Proyectos Creados</span>
+                          </div>
+                          <div className="summary-card">
+                            <span className="summary-number">
+                              {userProjects.reduce((total, project) => total + project.raised, 0).toFixed(2)} SOL
+                            </span>
+                            <span className="summary-label">Total Recaudado</span>
+                          </div>
+                          <div className="summary-card">
+                            <span className="summary-number">
+                              {userProjects.reduce((total, project) => total + project.goal, 0).toFixed(2)} SOL
+                            </span>
+                            <span className="summary-label">Meta Total</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="user-projects-grid">
+                        {userProjects.map((project) => (
+                          <ProjectCard
+                            key={project.id}
+                            title={project.title}
+                            description={project.description}
+                            raised={project.raised}
+                            goal={project.goal}
+                            daysLeft={project.daysLeft}
+                            image={project.image}
+                            onContribute={() => handleContribute(project)}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Stats Section - Only show in explore tab */}
+      {activeTab === 'explore' && (
+        <section className="stats">
         <div className="container">
           <div className="stats-grid">
             <StatsCard 
@@ -452,31 +1453,35 @@ const AppContent = () => {
             />
           </div>
         </div>
-      </section>
+        </section>
+      )}
 
-      {/* Featured Projects */}
-      <section className="featured-projects">
-        <div className="container">
-          <h2>Proyectos Destacados</h2>
-          <div className="projects-grid">
-            {loadingProjects ? (
-              <div className="loading-projects">
-                <p>Cargando proyectos desde la base de datos...</p>
-              </div>
-            ) : (
-              featuredProjects.map((project, index) => (
-                <ProjectCard 
-                  key={project.id || index} 
-                  {...project} 
-                  onContribute={() => handleContribute(project)}
-                />
-              ))
-            )}
+      {/* Featured Projects - Only show in explore tab */}
+      {activeTab === 'explore' && (
+        <section className="featured-projects">
+          <div className="container">
+            <h2>Proyectos Destacados</h2>
+            <div className="projects-grid">
+              {loadingProjects ? (
+                <div className="loading-projects">
+                  <p>Cargando proyectos desde la base de datos...</p>
+                </div>
+              ) : (
+                featuredProjects.map((project, index) => (
+                  <ProjectCard 
+                    key={project.id || index} 
+                    {...project} 
+                    onContribute={() => handleContribute(project)}
+                  />
+                ))
+              )}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
-      {/* Categories */}
+      {/* Categories - Only show in explore tab */}
+      {activeTab === 'explore' && (
       <section className="categories">
         <div className="container">
           <h2>Categorías Populares</h2>
@@ -499,7 +1504,17 @@ const AppContent = () => {
             )}
           </div>
         </div>
-      </section>
+        </section>
+      )}
+
+      {/* Transaction Verifier - Only show when wallet is connected */}
+      {connected && (
+        <section className="transaction-verifier-section">
+          <div className="container">
+            <TransactionVerifier verifyTransaction={verifyTransaction} />
+          </div>
+        </section>
+      )}
 
       {/* Footer */}
       <footer className="footer">
@@ -540,12 +1555,12 @@ const AppContent = () => {
         </div>
       </footer>
 
-      {/* Modal de contribución */}
+      {/* Modal de donación */}
       {showContributeModal && selectedProject && (
-        <ContributeModal 
+        <DonationModal 
           project={selectedProject}
           onClose={() => setShowContributeModal(false)}
-          addNotification={addNotification}
+          onDonate={handleDonation}
         />
       )}
 
@@ -554,102 +1569,6 @@ const AppContent = () => {
         notifications={notifications}
         removeNotification={removeNotification}
       />
-    </div>
-  )
-}
-
-// Modal para contribuir a un proyecto
-const ContributeModal = ({ 
-  project, 
-  onClose,
-  addNotification
-}: {
-  project: any
-  onClose: () => void
-  addNotification: (notification: Omit<Notification, 'id'>) => void
-}) => {
-  const [amount, setAmount] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const { connection } = useConnection()
-  const { publicKey, sendTransaction } = useWallet()
-
-  const handleContribute = async () => {
-    if (!publicKey || !amount) return
-
-    setIsLoading(true)
-    
-    try {
-      // Simulamos una transacción (aquí iría la lógica real de Solana)
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      addNotification({
-        type: 'success',
-        title: '¡Contribución exitosa!',
-        message: `Has contribuido ${amount} SOL al proyecto "${project.title}"`
-      })
-      
-      onClose()
-    } catch (error) {
-      console.error('Error en contribución:', error)
-      addNotification({
-        type: 'error',
-        title: 'Error en la contribución',
-        message: 'No se pudo procesar la transacción. Inténtalo de nuevo.'
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3>Contribuir a: {project.title}</h3>
-          <button className="modal-close" onClick={onClose}>×</button>
-        </div>
-        <div className="modal-body">
-          <div className="project-summary">
-            <img src={project.image} alt={project.title} />
-            <div className="project-info">
-              <p><strong>Meta:</strong> {project.goal.toLocaleString()} SOL</p>
-              <p><strong>Recaudado:</strong> {project.raised.toLocaleString()} SOL</p>
-              <p><strong>Días restantes:</strong> {project.daysLeft}</p>
-            </div>
-          </div>
-          <div className="contribute-form">
-            <label htmlFor="amount">Cantidad a contribuir (SOL):</label>
-            <input
-              type="number"
-              id="amount"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.00"
-              step="0.01"
-              min="0"
-            />
-            <div className="contribute-actions">
-              <button className="cancel-btn" onClick={onClose}>
-                Cancelar
-              </button>
-              <button 
-                className="confirm-btn" 
-                onClick={handleContribute}
-                disabled={!amount || parseFloat(amount) <= 0 || isLoading}
-              >
-                {isLoading ? (
-                  <>
-                    <span className="loading-spinner"></span>
-                    Procesando...
-                  </>
-                ) : (
-                  `Contribuir ${amount} SOL`
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   )
 }

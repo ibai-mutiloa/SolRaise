@@ -234,33 +234,61 @@ const AppContent = () => {
     setShowContributeModal(true)
   }
 
-  // Datos de ejemplo para los proyectos
-  const featuredProjects = [
-    {
-      title: "DeFi Gaming Platform",
-      description: "Plataforma de juegos descentralizada que combina NFTs y yield farming para crear una economía gaming sostenible.",
-      raised: 1250,
-      goal: 5000,
-      daysLeft: 15,
-      image: "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=400&h=250&fit=crop"
-    },
-    {
-      title: "Eco-Friendly NFT Marketplace",
-      description: "Marketplace de NFTs enfocado en arte digital sostenible y proyectos de impacto medioambiental.",
-      raised: 3200,
-      goal: 8000,
-      daysLeft: 22,
-      image: "https://images.unsplash.com/photo-1634973357973-f2ed2657db3c?w=400&h=250&fit=crop"
-    },
-    {
-      title: "Solana Education Hub",
-      description: "Plataforma educativa para desarrolladores que quieren aprender a construir en el ecosistema Solana.",
-      raised: 890,
-      goal: 2500,
-      daysLeft: 8,
-      image: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=400&h=250&fit=crop"
+  // Estado para los proyectos desde la API
+  const [featuredProjects, setFeaturedProjects] = useState<any[]>([])
+  const [loadingProjects, setLoadingProjects] = useState(true)
+
+  // Cargar proyectos desde la API
+  useEffect(() => {
+    const loadProjects = async () => {
+      try {
+        setLoadingProjects(true)
+        const response = await fetch('http://localhost:3000/projects')
+        if (!response.ok) {
+          throw new Error('Error al cargar proyectos')
+        }
+        const data = await response.json()
+        
+        // Transformar los datos para que coincidan con el formato esperado por el frontend
+        const transformedProjects = data.map((project: any) => ({
+          id: project.id,
+          title: project.title,
+          description: project.description,
+          raised: project.current_amount,
+          goal: project.goal_amount,
+          daysLeft: project.deadline ? Math.max(0, Math.ceil((new Date(project.deadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))) : 0,
+          image: "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=400&h=250&fit=crop",
+          category: project.category,
+          creator_wallet: project.creator_wallet
+        }))
+        
+        setFeaturedProjects(transformedProjects)
+      } catch (error) {
+        console.error('Error cargando proyectos:', error)
+        addNotification({
+          type: 'error',
+          title: 'Error',
+          message: 'No se pudieron cargar los proyectos desde la base de datos'
+        })
+        // Usar datos de respaldo en caso de error
+        setFeaturedProjects([
+          {
+            id: 1,
+            title: "DeFi Gaming Platform",
+            description: "Plataforma de juegos descentralizada que combina NFTs y yield farming para crear una economía gaming sostenible.",
+            raised: 1250,
+            goal: 5000,
+            daysLeft: 15,
+            image: "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=400&h=250&fit=crop"
+          }
+        ])
+      } finally {
+        setLoadingProjects(false)
+      }
     }
-  ]
+
+    loadProjects()
+  }, [])
 
   return (
     <div className="app">
@@ -350,13 +378,19 @@ const AppContent = () => {
         <div className="container">
           <h2>Proyectos Destacados</h2>
           <div className="projects-grid">
-            {featuredProjects.map((project, index) => (
-              <ProjectCard 
-                key={index} 
-                {...project} 
-                onContribute={() => handleContribute(project)}
-              />
-            ))}
+            {loadingProjects ? (
+              <div className="loading-projects">
+                <p>Cargando proyectos desde la base de datos...</p>
+              </div>
+            ) : (
+              featuredProjects.map((project, index) => (
+                <ProjectCard 
+                  key={project.id || index} 
+                  {...project} 
+                  onContribute={() => handleContribute(project)}
+                />
+              ))
+            )}
           </div>
         </div>
       </section>

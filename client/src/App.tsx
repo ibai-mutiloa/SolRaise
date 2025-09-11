@@ -237,6 +237,15 @@ const AppContent = () => {
   // Estado para los proyectos desde la API
   const [featuredProjects, setFeaturedProjects] = useState<any[]>([])
   const [loadingProjects, setLoadingProjects] = useState(true)
+  
+  // Estado para las estadísticas desde la API
+  const [stats, setStats] = useState({
+    total_raised: 0,
+    active_projects: 0,
+    unique_contributors: 0,
+    success_rate: 0
+  })
+  const [loadingStats, setLoadingStats] = useState(true)
 
   // Cargar proyectos desde la API
   useEffect(() => {
@@ -288,6 +297,32 @@ const AppContent = () => {
     }
 
     loadProjects()
+  }, [])
+
+  // Cargar estadísticas desde la API
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        setLoadingStats(true)
+        const response = await fetch('http://localhost:3000/stats')
+        if (!response.ok) {
+          throw new Error('Error al cargar estadísticas')
+        }
+        const data = await response.json()
+        setStats(data)
+      } catch (error) {
+        console.error('Error cargando estadísticas:', error)
+        addNotification({
+          type: 'warning',
+          title: 'Advertencia',
+          message: 'No se pudieron cargar las estadísticas en tiempo real'
+        })
+      } finally {
+        setLoadingStats(false)
+      }
+    }
+
+    loadStats()
   }, [])
 
   return (
@@ -351,22 +386,22 @@ const AppContent = () => {
           <div className="stats-grid">
             <StatsCard 
               title="Total Recaudado" 
-              value="1.2M SOL" 
+              value={loadingStats ? "Cargando..." : `${stats.total_raised.toFixed(2)} SOL`}
               icon="💰" 
             />
             <StatsCard 
               title="Proyectos Activos" 
-              value="156" 
+              value={loadingStats ? "Cargando..." : stats.active_projects.toString()}
               icon="🚀" 
             />
             <StatsCard 
               title="Contribuyentes" 
-              value="8,429" 
+              value={loadingStats ? "Cargando..." : stats.unique_contributors.toString()}
               icon="👥" 
             />
             <StatsCard 
               title="Proyectos Exitosos" 
-              value="89%" 
+              value={loadingStats ? "Cargando..." : `${stats.success_rate}%`}
               icon="✅" 
             />
           </div>

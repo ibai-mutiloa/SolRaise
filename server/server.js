@@ -48,6 +48,44 @@ app.get('/projects', async (req, res) => {
   }
 })
 
+// Endpoint para obtener estadísticas calculadas
+app.get('/stats', async (req, res) => {
+  try {
+    console.log('Stats endpoint called')
+    
+    // Obtener estadísticas simples primero
+    const totalRaisedResult = await pool.query('SELECT COALESCE(SUM(current_amount), 0) as total_raised FROM projects')
+    const totalProjectsResult = await pool.query('SELECT COUNT(*) as total_projects FROM projects')
+    const activeProjectsResult = await pool.query('SELECT COUNT(*) as active_projects FROM projects WHERE deadline > NOW()')
+    const contributorsResult = await pool.query('SELECT COUNT(DISTINCT donor_id) as unique_contributors FROM donations')
+    
+    const totalRaised = parseFloat(totalRaisedResult.rows[0].total_raised || 0)
+    const totalProjects = parseInt(totalProjectsResult.rows[0].total_projects || 0)
+    const activeProjects = parseInt(activeProjectsResult.rows[0].active_projects || 0)
+    const uniqueContributors = parseInt(contributorsResult.rows[0].unique_contributors || 0)
+    
+    // Calcular proyectos exitosos (que han alcanzado su meta)
+    const successfulResult = await pool.query('SELECT COUNT(*) as successful FROM projects WHERE current_amount >= goal_amount')
+    const successful = parseInt(successfulResult.rows[0].successful || 0)
+    const successRate = totalProjects > 0 ? Math.round((successful / totalProjects) * 100) : 0
+
+    const response = {
+      total_raised: totalRaised,
+      total_projects: totalProjects,
+      active_projects: activeProjects,
+      successful_projects: successful,
+      success_rate: successRate,
+      unique_contributors: uniqueContributors
+    }
+    
+    console.log('Stats response:', response)
+    res.json(response)
+  } catch (err) {
+    console.error('Error calculating stats:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // 2. Crear un nuevo proyecto
 app.post('/projects', async (req, res) => {
   const { creator_id, title, description, goal_amount, category, deadline } = req.body

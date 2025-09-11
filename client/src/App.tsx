@@ -251,6 +251,16 @@ const AppContent = () => {
   const [categories, setCategories] = useState<any[]>([])
   const [loadingCategories, setLoadingCategories] = useState(true)
 
+  // Estado para el formulario de crear proyecto
+  const [createProjectForm, setCreateProjectForm] = useState({
+    title: '',
+    description: '',
+    goal_amount: '',
+    category: '',
+    deadline: ''
+  })
+  const [isCreatingProject, setIsCreatingProject] = useState(false)
+
   // Cargar proyectos desde la API
   useEffect(() => {
     const loadProjects = async () => {
@@ -371,6 +381,118 @@ const AppContent = () => {
     return icons[categoryName] || icons['default']
   }
 
+  // Función para manejar cambios en el formulario de crear proyecto
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target
+    setCreateProjectForm(prev => ({
+      ...prev,
+      [name]: value
+    }))
+  }
+
+  // Función para crear un nuevo proyecto
+  const handleCreateProject = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!connected || !publicKey) {
+      addNotification({
+        type: 'error',
+        title: 'Error',
+        message: 'Debes conectar tu wallet para crear un proyecto'
+      })
+      return
+    }
+
+    if (!createProjectForm.title || !createProjectForm.description || !createProjectForm.goal_amount) {
+      addNotification({
+        type: 'error',
+        title: 'Error',
+        message: 'Por favor completa todos los campos obligatorios'
+      })
+      return
+    }
+
+    try {
+      setIsCreatingProject(true)
+      
+      // First, create or get user
+      const userResponse = await fetch('http://localhost:3000/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          wallet_address: publicKey.toString()
+        })
+      })
+      
+      let userData
+      if (userResponse.ok) {
+        userData = await userResponse.json()
+      } else {
+        // If user already exists, get the user
+        const getUserResponse = await fetch(`http://localhost:3000/users/${publicKey.toString()}`)
+        if (getUserResponse.ok) {
+          userData = await getUserResponse.json()
+        } else {
+          throw new Error('Error creating or finding user')
+        }
+      }
+
+      // Create the project
+      const projectData = {
+        creator_id: userData.id,
+        title: createProjectForm.title,
+        description: createProjectForm.description,
+        goal_amount: parseFloat(createProjectForm.goal_amount),
+        category: createProjectForm.category || 'Other',
+        deadline: createProjectForm.deadline ? new Date(createProjectForm.deadline).toISOString() : null
+      }
+
+      const response = await fetch('http://localhost:3000/projects', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(projectData)
+      })
+
+      if (response.ok) {
+        const newProject = await response.json()
+        addNotification({
+          type: 'success',
+          title: 'Éxito',
+          message: 'Proyecto creado exitosamente!'
+        })
+        
+        // Reset form
+        setCreateProjectForm({
+          title: '',
+          description: '',
+          goal_amount: '',
+          category: '',
+          deadline: ''
+        })
+        
+        // Switch to explore tab and reload projects
+        setActiveTab('explore')
+        // Reload projects to show the new one
+        window.location.reload()
+      } else {
+        throw new Error('Error creating project')
+      }
+    } catch (error) {
+      console.error('Error creating project:', error)
+      addNotification({
+        type: 'error',
+        title: 'Error',
+        message: 'Error al crear el proyecto. Inténtalo de nuevo.'
+      })
+    } finally {
+      setIsCreatingProject(false)
+    }
+  }
+
   return (
     <div className="app">
       {/* Header */}
@@ -409,25 +531,132 @@ const AppContent = () => {
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="hero">
-        <div className="container">
-          <div className="hero-content">
-            <h1>Impulsa el futuro con <span className="highlight">Solana</span></h1>
-            <p>
-              Descubre y financia proyectos innovadores en el ecosistema Solana. 
-              Rápido, seguro y descentralizado.
-            </p>
-            <div className="hero-actions">
-              <button className="cta-btn primary">Explorar Proyectos</button>
-              <button className="cta-btn secondary">Crear Proyecto</button>
+      {/* Hero Section - Only show in explore tab */}
+      {activeTab === 'explore' && (
+        <section className="hero">
+          <div className="container">
+            <div className="hero-content">
+              <h1>Impulsa el futuro con <span className="highlight">Solana</span></h1>
+              <p>
+                Descubre y financia proyectos innovadores en el ecosistema Solana. 
+                Rápido, seguro y descentralizado.
+              </p>
+              <div className="hero-actions">
+                <button className="cta-btn primary" onClick={() => setActiveTab('explore')}>Explorar Proyectos</button>
+                <button className="cta-btn secondary" onClick={() => setActiveTab('create')}>Crear Proyecto</button>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
-      {/* Stats Section */}
-      <section className="stats">
+      {/* Create Project Form */}
+      {activeTab === 'create' && (
+        <section className="create-project">
+          <div className="container">
+            <div className="create-project-content">
+              <h1>Crear Nuevo Proyecto</h1>
+              <p>Comparte tu idea innovadora con la comunidad Solana</p>
+              
+              <form onSubmit={handleCreateProject} className="create-project-form">
+                <div className="form-group">
+                  <label htmlFor="title">Título del Proyecto *</label>
+                  <input
+                    type="text"
+                    id="title"
+                    name="title"
+                    value={createProjectForm.title}
+                    onChange={handleFormChange}
+                    placeholder="Ingresa el título de tu proyecto"
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="description">Descripción *</label>
+                  <textarea
+                    id="description"
+                    name="description"
+                    value={createProjectForm.description}
+                    onChange={handleFormChange}
+                    placeholder="Describe tu proyecto en detalle..."
+                    rows={4}
+                    required
+                  />
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="goal_amount">Meta de Financiación (SOL) *</label>
+                    <input
+                      type="number"
+                      id="goal_amount"
+                      name="goal_amount"
+                      value={createProjectForm.goal_amount}
+                      onChange={handleFormChange}
+                      placeholder="1000"
+                      min="1"
+                      step="0.01"
+                      required
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="category">Categoría</label>
+                    <select
+                      id="category"
+                      name="category"
+                      value={createProjectForm.category}
+                      onChange={handleFormChange}
+                    >
+                      <option value="">Selecciona una categoría</option>
+                      <option value="Gaming">Gaming</option>
+                      <option value="DeFi">DeFi</option>
+                      <option value="NFT">NFT</option>
+                      <option value="Green Tech">Green Tech</option>
+                      <option value="Educación">Educación</option>
+                      <option value="Other">Otros</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="deadline">Fecha Límite</label>
+                  <input
+                    type="datetime-local"
+                    id="deadline"
+                    name="deadline"
+                    value={createProjectForm.deadline}
+                    onChange={handleFormChange}
+                    min={new Date().toISOString().slice(0, 16)}
+                  />
+                </div>
+
+                <div className="form-actions">
+                  <button 
+                    type="button" 
+                    className="btn-secondary"
+                    onClick={() => setActiveTab('explore')}
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="btn-primary"
+                    disabled={isCreatingProject}
+                  >
+                    {isCreatingProject ? 'Creando...' : 'Crear Proyecto'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Stats Section - Only show in explore tab */}
+      {activeTab === 'explore' && (
+        <section className="stats">
         <div className="container">
           <div className="stats-grid">
             <StatsCard 
@@ -452,31 +681,35 @@ const AppContent = () => {
             />
           </div>
         </div>
-      </section>
+        </section>
+      )}
 
-      {/* Featured Projects */}
-      <section className="featured-projects">
-        <div className="container">
-          <h2>Proyectos Destacados</h2>
-          <div className="projects-grid">
-            {loadingProjects ? (
-              <div className="loading-projects">
-                <p>Cargando proyectos desde la base de datos...</p>
-              </div>
-            ) : (
-              featuredProjects.map((project, index) => (
-                <ProjectCard 
-                  key={project.id || index} 
-                  {...project} 
-                  onContribute={() => handleContribute(project)}
-                />
-              ))
-            )}
+      {/* Featured Projects - Only show in explore tab */}
+      {activeTab === 'explore' && (
+        <section className="featured-projects">
+          <div className="container">
+            <h2>Proyectos Destacados</h2>
+            <div className="projects-grid">
+              {loadingProjects ? (
+                <div className="loading-projects">
+                  <p>Cargando proyectos desde la base de datos...</p>
+                </div>
+              ) : (
+                featuredProjects.map((project, index) => (
+                  <ProjectCard 
+                    key={project.id || index} 
+                    {...project} 
+                    onContribute={() => handleContribute(project)}
+                  />
+                ))
+              )}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
-      {/* Categories */}
+      {/* Categories - Only show in explore tab */}
+      {activeTab === 'explore' && (
       <section className="categories">
         <div className="container">
           <h2>Categorías Populares</h2>
@@ -499,7 +732,8 @@ const AppContent = () => {
             )}
           </div>
         </div>
-      </section>
+        </section>
+      )}
 
       {/* Footer */}
       <footer className="footer">

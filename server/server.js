@@ -132,6 +132,47 @@ app.get('/categories', async (req, res) => {
   }
 })
 
+// Test endpoint
+app.get('/test', (req, res) => {
+  res.json({ message: 'Test endpoint working!' })
+})
+
+// Endpoint para crear o obtener usuario
+app.post('/users', async (req, res) => {
+  console.log('POST /users endpoint hit with body:', req.body)
+  const { wallet_address } = req.body
+  try {
+    // Try to insert new user
+    const result = await pool.query(`
+      INSERT INTO users (wallet_address)
+      VALUES ($1)
+      ON CONFLICT (wallet_address) DO UPDATE SET wallet_address = EXCLUDED.wallet_address
+      RETURNING *;
+    `, [wallet_address])
+    res.status(201).json(result.rows[0])
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Endpoint para obtener usuario por wallet
+app.get('/users/:wallet_address', async (req, res) => {
+  const { wallet_address } = req.params
+  try {
+    const result = await pool.query(`
+      SELECT * FROM users WHERE wallet_address = $1
+    `, [wallet_address])
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+    
+    res.json(result.rows[0])
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // 2. Crear un nuevo proyecto
 app.post('/projects', async (req, res) => {
   const { creator_id, title, description, goal_amount, category, deadline } = req.body

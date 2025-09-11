@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { Connection, clusterApiUrl, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js'
+import { Connection, clusterApiUrl, PublicKey, LAMPORTS_PER_SOL, Transaction, SystemProgram } from '@solana/web3.js'
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base'
 import {
   ConnectionProvider,
@@ -46,6 +46,108 @@ const NotificationContainer = ({
           onClose={() => removeNotification(notification.id)}
         />
       ))}
+    </div>
+  )
+}
+
+// Modal de donación
+const DonationModal = ({ 
+  project, 
+  onClose, 
+  onDonate 
+}: {
+  project: any
+  onClose: () => void
+  onDonate: (amount: number) => Promise<boolean>
+}) => {
+  const [donationAmount, setDonationAmount] = useState('')
+  const [isProcessing, setIsProcessing] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    const amount = parseFloat(donationAmount)
+    if (isNaN(amount) || amount <= 0) {
+      alert('Por favor ingresa una cantidad válida')
+      return
+    }
+
+    setIsProcessing(true)
+    const success = await onDonate(amount)
+    setIsProcessing(false)
+    
+    if (success) {
+      onClose()
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Contribuir al Proyecto</h2>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+        
+        <div className="modal-body">
+          <div className="project-info">
+            <h3>{project.title}</h3>
+            <p>Meta: {project.goal} SOL</p>
+            <p>Recaudado: {project.raised} SOL</p>
+            <div className="progress-bar">
+              <div 
+                className="progress-fill" 
+                style={{ width: `${Math.min((project.raised / project.goal) * 100, 100)}%` }}
+              ></div>
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmit} className="donation-form">
+            <div className="form-group">
+              <label htmlFor="donation-amount">Cantidad a donar (SOL)</label>
+              <input
+                type="number"
+                id="donation-amount"
+                value={donationAmount}
+                onChange={(e) => setDonationAmount(e.target.value)}
+                placeholder="0.1"
+                min="0.001"
+                step="0.001"
+                required
+                disabled={isProcessing}
+              />
+            </div>
+
+            <div className="donation-buttons">
+              <button 
+                type="button" 
+                className="btn-secondary" 
+                onClick={onClose}
+                disabled={isProcessing}
+              >
+                Cancelar
+              </button>
+              <button 
+                type="submit" 
+                className="btn-primary"
+                disabled={isProcessing}
+              >
+                {isProcessing ? 'Procesando...' : 'Donar SOL'}
+              </button>
+            </div>
+          </form>
+
+          <div className="donation-info">
+            <p><strong>⚠️ Importante:</strong></p>
+            <ul>
+              <li>Esta transacción será procesada en la blockchain de Solana</li>
+              <li>Necesitarás confirmar la transacción en tu wallet</li>
+              <li>Las transacciones son irreversibles</li>
+              <li>Se aplicarán tarifas de red de Solana</li>
+            </ul>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -208,7 +310,8 @@ const AppContent = () => {
   const [showContributeModal, setShowContributeModal] = useState(false)
   const [selectedProject, setSelectedProject] = useState<any>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
-  const { connected, publicKey } = useWallet()
+  const { connected, publicKey, sendTransaction } = useWallet()
+  const { connection } = useConnection()
 
   // Función para agregar notificaciones
   const addNotification = useCallback((notification: Omit<Notification, 'id'>) => {
@@ -232,6 +335,16 @@ const AppContent = () => {
     }
     setSelectedProject(project)
     setShowContributeModal(true)
+  }
+
+  const handleDonation = async (amount: number): Promise<boolean> => {
+    if (!selectedProject) return false
+    const success = await processDonation(selectedProject, amount)
+    if (success) {
+      // Recargar proyectos para mostrar la nueva cantidad
+      window.location.reload()
+    }
+    return success
   }
 
   // Estado para los proyectos desde la API
@@ -439,6 +552,141 @@ const AppContent = () => {
       setLoadingUserProjects(false)
     }
   }, [connected, publicKey, addNotification])
+
+  // Función para procesar donación con Solana
+  const processDonation = useCallback(async (project: any, donationAmount: number) => {
+    if (!connected || !publicKey || !sendTransaction) {
+      addNotification({
+        type: 'error',
+        title: 'Wallet no conectado',
+        message: 'Por favor conecta tu wallet para donar'
+      })
+      return false
+    }
+
+    try {
+      console.log('Processing donation...', { project, donationAmount })
+      
+      // Convertir la cantidad de SOL a lamports
+      const lamports = donationAmount * LAMPORTS_PER_SOL
+      console.log('Donation amount in lamports:', lamports)
+
+      // Crear la dirección pública del creador del proyecto
+      const creatorPublicKey = new PublicKey(project.creator_wallet)
+      console.log('Creator wallet:', project.creator_wallet)
+
+      // Crear la transacción de transferencia
+      const transaction = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: publicKey,
+          toPubkey: creatorPublicKey,
+          lamports: lamports,
+        })
+      )
+
+      console.log('Transaction created, requesting signature...')
+      
+      // Enviar la transacción y obtener la signatura
+      const signature = await sendTransaction(transaction, connection)
+      console.log('Transaction signature:', signature)
+
+      addNotification({
+        type: 'info',
+        title: 'Transacción enviada',
+        message: 'Esperando confirmación en la blockchain...'
+      })
+
+      // Esperar confirmación de la transacción
+      console.log('Waiting for transaction confirmation...')
+      const confirmation = await connection.confirmTransaction(signature, 'confirmed')
+      
+      if (confirmation.value.err) {
+        throw new Error('Transaction failed: ' + confirmation.value.err)
+      }
+
+      console.log('Transaction confirmed, recording in database...')
+
+      // Registrar la donación en la base de datos
+      await recordDonation({
+        project_id: project.id,
+        donor_wallet: publicKey.toString(),
+        amount: donationAmount,
+        tx_signature: signature
+      })
+
+      addNotification({
+        type: 'success',
+        title: '¡Donación exitosa!',
+        message: `Has donado ${donationAmount} SOL al proyecto "${project.title}"`
+      })
+
+      return true
+
+    } catch (error) {
+      console.error('Error processing donation:', error)
+      addNotification({
+        type: 'error',
+        title: 'Error en la donación',
+        message: error instanceof Error ? error.message : 'Error desconocido al procesar la donación'
+      })
+      return false
+    }
+  }, [connected, publicKey, sendTransaction, connection, addNotification])
+
+  // Función para registrar donación en la base de datos
+  const recordDonation = useCallback(async (donationData: {
+    project_id: number
+    donor_wallet: string
+    amount: number
+    tx_signature: string
+  }) => {
+    try {
+      // Primero crear o obtener el usuario donante
+      const userResponse = await fetch('http://localhost:3000/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          wallet_address: donationData.donor_wallet
+        })
+      })
+
+      if (!userResponse.ok) {
+        throw new Error('Error creating donor user')
+      }
+
+      const user = await userResponse.json()
+      console.log('Donor user:', user)
+
+      // Registrar la donación
+      const donationResponse = await fetch('http://localhost:3000/donations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          donor_id: user.id,
+          project_id: donationData.project_id,
+          amount: donationData.amount,
+          tx_signature: donationData.tx_signature
+        })
+      })
+
+      if (!donationResponse.ok) {
+        throw new Error('Error recording donation')
+      }
+
+      const donation = await donationResponse.json()
+      console.log('Donation recorded:', donation)
+
+      return donation
+
+    } catch (error) {
+      console.error('Error recording donation in database:', error)
+      throw error
+    }
+  }, [])
 
   // Función para obtener el icono de la categoría
   const getCategoryIcon = (categoryName: string) => {
@@ -951,12 +1199,12 @@ const AppContent = () => {
         </div>
       </footer>
 
-      {/* Modal de contribución */}
+      {/* Modal de donación */}
       {showContributeModal && selectedProject && (
-        <ContributeModal 
+        <DonationModal 
           project={selectedProject}
           onClose={() => setShowContributeModal(false)}
-          addNotification={addNotification}
+          onDonate={handleDonation}
         />
       )}
 
@@ -965,102 +1213,6 @@ const AppContent = () => {
         notifications={notifications}
         removeNotification={removeNotification}
       />
-    </div>
-  )
-}
-
-// Modal para contribuir a un proyecto
-const ContributeModal = ({ 
-  project, 
-  onClose,
-  addNotification
-}: {
-  project: any
-  onClose: () => void
-  addNotification: (notification: Omit<Notification, 'id'>) => void
-}) => {
-  const [amount, setAmount] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const { connection } = useConnection()
-  const { publicKey, sendTransaction } = useWallet()
-
-  const handleContribute = async () => {
-    if (!publicKey || !amount) return
-
-    setIsLoading(true)
-    
-    try {
-      // Simulamos una transacción (aquí iría la lógica real de Solana)
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      addNotification({
-        type: 'success',
-        title: '¡Contribución exitosa!',
-        message: `Has contribuido ${amount} SOL al proyecto "${project.title}"`
-      })
-      
-      onClose()
-    } catch (error) {
-      console.error('Error en contribución:', error)
-      addNotification({
-        type: 'error',
-        title: 'Error en la contribución',
-        message: 'No se pudo procesar la transacción. Inténtalo de nuevo.'
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3>Contribuir a: {project.title}</h3>
-          <button className="modal-close" onClick={onClose}>×</button>
-        </div>
-        <div className="modal-body">
-          <div className="project-summary">
-            <img src={project.image} alt={project.title} />
-            <div className="project-info">
-              <p><strong>Meta:</strong> {project.goal.toLocaleString()} SOL</p>
-              <p><strong>Recaudado:</strong> {project.raised.toLocaleString()} SOL</p>
-              <p><strong>Días restantes:</strong> {project.daysLeft}</p>
-            </div>
-          </div>
-          <div className="contribute-form">
-            <label htmlFor="amount">Cantidad a contribuir (SOL):</label>
-            <input
-              type="number"
-              id="amount"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.00"
-              step="0.01"
-              min="0"
-            />
-            <div className="contribute-actions">
-              <button className="cancel-btn" onClick={onClose}>
-                Cancelar
-              </button>
-              <button 
-                className="confirm-btn" 
-                onClick={handleContribute}
-                disabled={!amount || parseFloat(amount) <= 0 || isLoading}
-              >
-                {isLoading ? (
-                  <>
-                    <span className="loading-spinner"></span>
-                    Procesando...
-                  </>
-                ) : (
-                  `Contribuir ${amount} SOL`
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   )
 }

@@ -5,6 +5,7 @@
 }
 
 body {
+  display: contents;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   line-height: 1.6;
   color: #333;
@@ -19,10 +20,24 @@ body {
 }
 
 .container {
-  max-width: 1200px;
+  max-width: 1600px; /* Aumentado de 1200px a 1600px */
   margin: 0 auto;
   padding: 0 20px;
   width: 100%;
+}
+
+/* Para pantallas muy grandes, usar un padding más amplio */
+@media (min-width: 1400px) {
+  .container {
+    padding: 0 40px;
+  }
+}
+
+@media (min-width: 1800px) {
+  .container {
+    max-width: 1800px;
+    padding: 0 60px;
+  }
 }
 
 /* Header */
@@ -147,6 +162,14 @@ body {
   padding: 5rem 0;
   text-align: center;
   background: radial-gradient(circle at center, rgba(0, 212, 255, 0.1) 0%, transparent 70%);
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.hero .container {
+  width: 100%;
+  max-width: 1600px;
 }
 
 .hero-content h1 {
@@ -170,6 +193,29 @@ body {
   max-width: 600px;
   margin-left: auto;
   margin-right: auto;
+}
+
+/* Optimizaciones para pantallas grandes */
+@media (min-width: 1200px) {
+  .hero-content h1 {
+    font-size: 4rem;
+  }
+  
+  .hero-content p {
+    font-size: 1.3rem;
+    max-width: 700px;
+  }
+}
+
+@media (min-width: 1600px) {
+  .hero-content h1 {
+    font-size: 4.5rem;
+  }
+  
+  .hero-content p {
+    font-size: 1.4rem;
+    max-width: 800px;
+  }
 }
 
 .hero-actions {
@@ -209,12 +255,35 @@ body {
 .stats {
   padding: 4rem 0;
   background: rgba(0, 0, 0, 0.2);
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.stats .container {
+  width: 100%;
+  max-width: 1600px;
 }
 
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 2rem;
+}
+
+/* Optimizaciones para pantallas grandes */
+@media (min-width: 1200px) {
+  .stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 2.5rem;
+  }
+}
+
+@media (min-width: 1600px) {
+  .stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 3rem;
+  }
 }
 
 .stats-card {
@@ -714,6 +783,14 @@ body {
 /* Featured Projects */
 .featured-projects {
   padding: 5rem 0;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.featured-projects .container {
+  width: 100%;
+  max-width: 1600px;
 }
 
 .featured-projects h2 {
@@ -727,6 +804,21 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
   gap: 2rem;
+}
+
+/* Optimizaciones para pantallas grandes */
+@media (min-width: 1200px) {
+  .projects-grid {
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+    gap: 2.5rem;
+  }
+}
+
+@media (min-width: 1600px) {
+  .projects-grid {
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 3rem;
+  }
 }
 
 .loading-projects {
@@ -842,6 +934,14 @@ body {
 .categories {
   padding: 5rem 0;
   background: rgba(0, 0, 0, 0.2);
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.categories .container {
+  width: 100%;
+  max-width: 1600px;
 }
 
 .categories h2 {
@@ -855,6 +955,21 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 1.5rem;
+}
+
+/* Optimizaciones para pantallas grandes */
+@media (min-width: 1200px) {
+  .categories-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 2rem;
+  }
+}
+
+@media (min-width: 1600px) {
+  .categories-grid {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 2.5rem;
+  }
 }
 
 .loading-categories {
@@ -1232,6 +1347,14 @@ body {
   background: rgba(0, 0, 0, 0.4);
   padding: 3rem 0 1rem;
   margin-top: 5rem;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.footer .container {
+  width: 100%;
+  max-width: 1600px;
 }
 
 .footer-content {
@@ -1239,6 +1362,21 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 2rem;
   margin-bottom: 2rem;
+}
+
+/* Optimizaciones para pantallas grandes */
+@media (min-width: 1200px) {
+  .footer-content {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 3rem;
+  }
+}
+
+@media (min-width: 1600px) {
+  .footer-content {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4rem;
+  }
 }
 
 .footer-section h3, .footer-section h4 {
@@ -1686,5 +1824,80 @@ body {
   
   .notification-content p {
     font-size: 12px;
+  }
+}
+
+/* Mejoras adicionales para pantallas muy grandes */
+@media (min-width: 2000px) {
+  .container {
+    max-width: 2000px;
+  }
+  
+  .hero {
+    padding: 6rem 0;
+  }
+  
+  .hero-content h1 {
+    font-size: 5rem;
+  }
+  
+  .projects-grid,
+  .stats-grid,
+  .categories-grid {
+    gap: 3.5rem;
+  }
+  
+  .project-card,
+  .stats-card,
+  .category-card {
+    padding: 2.5rem;
+  }
+}
+
+/* Asegurar que no hay overflow horizontal */
+body {
+  overflow-x: hidden;
+}
+
+.app {
+  overflow-x: hidden;
+}
+
+/* Centrado global para todas las secciones */
+section {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+section .container {
+  width: 100%;
+  max-width: 1600px;
+}
+
+/* Centrado específico para secciones principales */
+.my-projects,
+.create-project,
+.transaction-verifier-section {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.my-projects .container,
+.create-project .container,
+.transaction-verifier-section .container {
+  width: 100%;
+  max-width: 1600px;
+}
+
+/* Mejoras para la navegación en pantallas grandes */
+@media (min-width: 1200px) {
+  .nav {
+    padding: 1.5rem 0;
+  }
+  
+  .logo h1 {
+    font-size: 2rem;
   }
 }

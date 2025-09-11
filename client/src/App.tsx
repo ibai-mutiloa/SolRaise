@@ -246,6 +246,10 @@ const AppContent = () => {
     success_rate: 0
   })
   const [loadingStats, setLoadingStats] = useState(true)
+  
+  // Estado para las categorías desde la API
+  const [categories, setCategories] = useState<any[]>([])
+  const [loadingCategories, setLoadingCategories] = useState(true)
 
   // Cargar proyectos desde la API
   useEffect(() => {
@@ -324,6 +328,48 @@ const AppContent = () => {
 
     loadStats()
   }, [])
+
+  // Cargar categorías desde la API
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        setLoadingCategories(true)
+        const response = await fetch('http://localhost:3000/categories')
+        if (!response.ok) {
+          throw new Error('Error al cargar categorías')
+        }
+        const data = await response.json()
+        setCategories(data)
+      } catch (error) {
+        console.error('Error cargando categorías:', error)
+        // Usar categorías de respaldo en caso de error
+        setCategories([
+          { name: 'Gaming', project_count: 1, icon: '🎮' },
+          { name: 'DeFi', project_count: 1, icon: '🏦' },
+          { name: 'NFT', project_count: 1, icon: '🎨' },
+          { name: 'Green Tech', project_count: 1, icon: '🌱' }
+        ])
+      } finally {
+        setLoadingCategories(false)
+      }
+    }
+
+    loadCategories()
+  }, [])
+
+  // Función para obtener el icono de la categoría
+  const getCategoryIcon = (categoryName: string) => {
+    const icons: { [key: string]: string } = {
+      'Gaming': '🎮',
+      'DeFi': '🏦',
+      'NFT': '🎨',
+      'Green Tech': '🌱',
+      'Educación': '📚',
+      'Herramientas': '🔧',
+      'default': '📦'
+    }
+    return icons[categoryName] || icons['default']
+  }
 
   return (
     <div className="app">
@@ -435,36 +481,22 @@ const AppContent = () => {
         <div className="container">
           <h2>Categorías Populares</h2>
           <div className="categories-grid">
-            <div className="category-card">
-              <div className="category-icon">🎮</div>
-              <h3>Gaming</h3>
-              <p>45 proyectos</p>
-            </div>
-            <div className="category-card">
-              <div className="category-icon">🏦</div>
-              <h3>DeFi</h3>
-              <p>32 proyectos</p>
-            </div>
-            <div className="category-card">
-              <div className="category-icon">🎨</div>
-              <h3>NFTs</h3>
-              <p>28 proyectos</p>
-            </div>
-            <div className="category-card">
-              <div className="category-icon">📚</div>
-              <h3>Educación</h3>
-              <p>19 proyectos</p>
-            </div>
-            <div className="category-card">
-              <div className="category-icon">🌱</div>
-              <h3>Sostenibilidad</h3>
-              <p>15 proyectos</p>
-            </div>
-            <div className="category-card">
-              <div className="category-icon">🔧</div>
-              <h3>Herramientas</h3>
-              <p>23 proyectos</p>
-            </div>
+            {loadingCategories ? (
+              <div className="loading-categories">
+                <p>Cargando categorías...</p>
+              </div>
+            ) : (
+              categories.map((category, index) => (
+                <div key={index} className="category-card">
+                  <div className="category-icon">{getCategoryIcon(category.name)}</div>
+                  <h3>{category.name}</h3>
+                  <p>{category.project_count} proyecto{category.project_count !== 1 ? 's' : ''}</p>
+                  {category.total_raised > 0 && (
+                    <small>{category.total_raised.toFixed(2)} SOL recaudados</small>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         </div>
       </section>

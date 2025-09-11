@@ -69,19 +69,65 @@ app.get('/stats', async (req, res) => {
     const successful = parseInt(successfulResult.rows[0].successful || 0)
     const successRate = totalProjects > 0 ? Math.round((successful / totalProjects) * 100) : 0
 
+    // Obtener estadísticas por categoría
+    const categoriesResult = await pool.query(`
+      SELECT 
+        category,
+        COUNT(*) as project_count,
+        COALESCE(SUM(current_amount), 0) as total_raised_category
+      FROM projects 
+      WHERE category IS NOT NULL AND category != ''
+      GROUP BY category 
+      ORDER BY project_count DESC
+    `)
+
     const response = {
       total_raised: totalRaised,
       total_projects: totalProjects,
       active_projects: activeProjects,
       successful_projects: successful,
       success_rate: successRate,
-      unique_contributors: uniqueContributors
+      unique_contributors: uniqueContributors,
+      categories: categoriesResult.rows.map(row => ({
+        name: row.category,
+        project_count: parseInt(row.project_count),
+        total_raised: parseFloat(row.total_raised_category)
+      }))
     }
     
     console.log('Stats response:', response)
     res.json(response)
   } catch (err) {
     console.error('Error calculating stats:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Endpoint para obtener categorías con estadísticas
+app.get('/categories', async (req, res) => {
+  try {
+    const categoriesResult = await pool.query(`
+      SELECT 
+        category,
+        COUNT(*) as project_count,
+        COALESCE(SUM(current_amount), 0) as total_raised,
+        COALESCE(AVG(current_amount), 0) as avg_raised
+      FROM projects 
+      WHERE category IS NOT NULL AND category != ''
+      GROUP BY category 
+      ORDER BY project_count DESC
+    `)
+
+    const categories = categoriesResult.rows.map(row => ({
+      name: row.category,
+      project_count: parseInt(row.project_count),
+      total_raised: parseFloat(row.total_raised),
+      avg_raised: parseFloat(row.avg_raised)
+    }))
+
+    res.json(categories)
+  } catch (err) {
+    console.error('Error fetching categories:', err)
     res.status(500).json({ error: err.message })
   }
 })

@@ -62,6 +62,12 @@ const DonationModal = ({
 }) => {
   const [donationAmount, setDonationAmount] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
+  const [localProject, setLocalProject] = useState(project)
+
+  // Actualizar localProject cuando project cambie
+  useEffect(() => {
+    setLocalProject(project)
+  }, [project])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -91,15 +97,18 @@ const DonationModal = ({
         
         <div className="modal-body">
           <div className="project-info">
-            <h3>{project.title}</h3>
-            <p>Meta: {project.goal} SOL</p>
-            <p>Recaudado: {project.raised} SOL</p>
+            <h3>{localProject.title}</h3>
+            <p>Meta: {localProject.goal} SOL</p>
+            <p>Recaudado: {localProject.raised} SOL</p>
             <div className="progress-bar">
               <div 
                 className="progress-fill" 
-                style={{ width: `${Math.min((project.raised / project.goal) * 100, 100)}%` }}
+                style={{ width: `${Math.min((localProject.raised / localProject.goal) * 100, 100)}%` }}
               ></div>
             </div>
+            <p className="progress-percentage">
+              {((localProject.raised / localProject.goal) * 100).toFixed(1)}% completado
+            </p>
           </div>
 
           <form onSubmit={handleSubmit} className="donation-form">
@@ -143,7 +152,9 @@ const DonationModal = ({
               <li>Esta transacción será procesada en la blockchain de Solana</li>
               <li>Necesitarás confirmar la transacción en tu wallet</li>
               <li>Las transacciones son irreversibles</li>
-              <li>Se aplicarán tarifas de red de Solana</li>
+              <li>Se aplicarán tarifas de red de Solana (~0.000005 SOL)</li>
+              <li>La confirmación puede tomar hasta 60 segundos</li>
+              <li>Puedes verificar tu transacción en Solana Explorer</li>
             </ul>
           </div>
         </div>
@@ -230,6 +241,71 @@ const WalletInfo = () => {
       </div>
       <div className="wallet-address">
         {publicKey?.toString().slice(0, 4)}...{publicKey?.toString().slice(-4)}
+      </div>
+    </div>
+  )
+}
+
+// Componente para verificar transacciones manualmente
+const TransactionVerifier = ({ verifyTransaction }: { verifyTransaction: (signature: string) => Promise<void> }) => {
+  const [signature, setSignature] = useState('')
+  const [isVerifying, setIsVerifying] = useState(false)
+
+  const handleVerify = async () => {
+    if (!signature.trim()) return
+    
+    setIsVerifying(true)
+    try {
+      await verifyTransaction(signature.trim())
+    } finally {
+      setIsVerifying(false)
+      setSignature('')
+    }
+  }
+
+  const handlePasteExample = () => {
+    setSignature('49KGUCiTjcFcYENC9NhLxfzPoxJQFxgqD3X2d1KuTpRDtFaABpzR7iigwBqmPqNQLjKRSA8k1N9oA36zrT2Dptvf')
+  }
+
+  return (
+    <div className="transaction-verifier">
+      <div className="verifier-header">
+        <h3>🔍 Verificar Transacción</h3>
+        <p>Verifica el estado de una transacción de Solana</p>
+        <small>Si tu donación dio timeout, puedes verificar su estado aquí</small>
+      </div>
+      <div className="verifier-input">
+        <input
+          type="text"
+          placeholder="Ingresa la signature de la transacción..."
+          value={signature}
+          onChange={(e) => setSignature(e.target.value)}
+          className="signature-input"
+        />
+        <button
+          onClick={handleVerify}
+          disabled={!signature.trim() || isVerifying}
+          className="verify-btn"
+        >
+          {isVerifying ? 'Verificando...' : 'Verificar'}
+        </button>
+      </div>
+      <div className="verifier-actions">
+        <button
+          onClick={handlePasteExample}
+          className="paste-example-btn"
+          disabled={isVerifying}
+        >
+          Pegar signature de ejemplo
+        </button>
+        <a
+          href={signature.trim() ? `https://explorer.solana.com/tx/${signature.trim()}?cluster=devnet` : '#'}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`explorer-link ${!signature.trim() ? 'disabled' : ''}`}
+        >
+          Ver en Solana Explorer 🔗
+        </a>
       </div>
     </div>
   )
@@ -341,8 +417,10 @@ const AppContent = () => {
     if (!selectedProject) return false
     const success = await processDonation(selectedProject, amount)
     if (success) {
-      // Recargar proyectos para mostrar la nueva cantidad
-      window.location.reload()
+      // Actualizar automáticamente el estado de los proyectos
+      await refreshProjectsData()
+      // También actualizar las estadísticas
+      await refreshStats()
     }
     return success
   }
@@ -596,34 +674,190 @@ const AppContent = () => {
         message: 'Esperando confirmación en la blockchain...'
       })
 
-      // Esperar confirmación de la transacción
+      // Esperar confirmación de la transacción con timeout extendido
       console.log('Waiting for transaction confirmation...')
-      const confirmation = await connection.confirmTransaction(signature, 'confirmed')
       
-      if (confirmation.value.err) {
-        throw new Error('Transaction failed: ' + confirmation.value.err)
+      try {
+        // Intentar confirmar con timeout extendido
+        const confirmation = await Promise.race([
+          connection.confirmTransaction(signature, 'confirmed'),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('TIMEOUT')), 60000) // 60 segundos
+          )
+        ]) as any
+        
+        if (confirmation.value && confirmation.value.err) {
+          throw new Error('Transaction failed: ' + confirmation.value.err)
+        }
+        
+        console.log('Transaction confirmed successfully')
+        
+      } catch (timeoutError: any) {
+        if (timeoutError.message === 'TIMEOUT') {
+          console.log('Transaction timeout, checking status...')
+          
+          // Verificar el estado de la transacción manualmente
+          try {
+            const status = await connection.getSignatureStatus(signature)
+            console.log('Transaction status:', status)
+            
+            if (status.value?.confirmationStatus === 'confirmed' || 
+                status.value?.confirmationStatus === 'finalized') {
+              console.log('Transaction was actually confirmed!')
+            } else if (status.value?.err) {
+              throw new Error('Transaction failed: ' + status.value.err)
+            } else {
+              // La transacción está pendiente, continuar de todos modos
+              addNotification({
+                type: 'warning',
+                title: 'Transacción Pendiente',
+                message: `La transacción está pendiente de confirmación. Signature: ${signature.slice(0, 8)}...`
+              })
+              console.log('Transaction is still pending, proceeding...')
+            }
+          } catch (statusError) {
+            console.error('Error checking transaction status:', statusError)
+            throw new Error(`Transaction timeout. Please check signature ${signature} in Solana Explorer`)
+          }
+        } else {
+          throw timeoutError
+        }
       }
 
       console.log('Transaction confirmed, recording in database...')
 
       // Registrar la donación en la base de datos
-      await recordDonation({
-        project_id: project.id,
-        donor_wallet: publicKey.toString(),
-        amount: donationAmount,
-        tx_signature: signature
-      })
+      try {
+        await recordDonation({
+          project_id: project.id,
+          donor_wallet: publicKey.toString(),
+          amount: donationAmount,
+          tx_signature: signature
+        })
+        console.log('Donation recorded successfully in database')
+      } catch (dbError) {
+        console.error('Error recording donation in database:', dbError)
+        // Continuar incluso si falla el registro en BD, la transacción blockchain ya se completó
+        addNotification({
+          type: 'warning',
+          title: 'Advertencia',
+          message: 'La donación se completó en blockchain pero hubo un error al registrarla en la base de datos'
+        })
+      }
+
+      // Mostrar feedback inmediato actualizar el proyecto localmente
+      const updatedProject = {
+        ...project,
+        raised: project.raised + donationAmount
+      }
+      
+      // Actualizar el proyecto seleccionado inmediatamente para feedback visual
+      setSelectedProject(updatedProject)
 
       addNotification({
         type: 'success',
         title: '¡Donación exitosa!',
-        message: `Has donado ${donationAmount} SOL al proyecto "${project.title}"`
+        message: `Has donado ${donationAmount} SOL al proyecto "${project.title}". Signature: ${signature.slice(0, 8)}...`
       })
+
+      // Mostrar enlace al explorer en consola para debugging
+      console.log(`Transaction completed! View on Solana Explorer: https://explorer.solana.com/tx/${signature}?cluster=devnet`)
 
       return true
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error processing donation:', error)
+      
+      // Capturar errores específicos de timeout de transacción
+      if (error.message && error.message.includes('Transaction was not confirmed')) {
+        const signatureMatch = error.message.match(/signature\s+([A-Za-z0-9]+)/);
+        const signature = signatureMatch ? signatureMatch[1] : null;
+        
+        if (signature) {
+          console.log('Caught transaction timeout with signature:', signature);
+          
+          // Verificar el estado de la transacción manualmente
+          try {
+            console.log('Checking transaction status manually...');
+            const status = await connection.getSignatureStatus(signature);
+            console.log('Manual status check result:', status);
+            
+            if (status.value?.confirmationStatus === 'confirmed' || 
+                status.value?.confirmationStatus === 'finalized') {
+              console.log('Transaction was actually confirmed! Recording in database...');
+              
+              // La transacción está confirmada, registrar en BD
+              try {
+                await recordDonation({
+                  project_id: project.id,
+                  donor_wallet: publicKey.toString(),
+                  amount: donationAmount,
+                  tx_signature: signature
+                });
+                
+                // Actualizar UI
+                const updatedProject = {
+                  ...project,
+                  raised: project.raised + donationAmount
+                };
+                setSelectedProject(updatedProject);
+                
+                addNotification({
+                  type: 'success',
+                  title: '¡Donación confirmada!',
+                  message: `La transacción se completó exitosamente. Signature: ${signature.slice(0, 8)}...`
+                });
+                
+                // Refrescar datos
+                await refreshProjectsData();
+                await refreshStats();
+                
+                console.log(`Transaction confirmed! View on Solana Explorer: https://explorer.solana.com/tx/${signature}?cluster=devnet`);
+                return true;
+                
+              } catch (dbError) {
+                console.error('Error recording confirmed donation:', dbError);
+                addNotification({
+                  type: 'warning',
+                  title: 'Transacción Exitosa',
+                  message: `La donación se completó pero hubo un error al registrarla. Verifica manualmente: ${signature.slice(0, 8)}...`
+                });
+                return true; // La transacción blockchain fue exitosa
+              }
+              
+            } else if (status.value?.err) {
+              addNotification({
+                type: 'error',
+                title: 'Transacción Fallida',
+                message: `La transacción falló: ${status.value.err}`
+              });
+              return false;
+              
+            } else {
+              // Transacción pendiente
+              addNotification({
+                type: 'warning',
+                title: 'Transacción Pendiente',
+                message: `La transacción está pendiente. Usa el verificador para chequear el estado: ${signature.slice(0, 8)}...`
+              });
+              
+              console.log(`Transaction pending! View on Solana Explorer: https://explorer.solana.com/tx/${signature}?cluster=devnet`);
+              return false;
+            }
+            
+          } catch (statusError) {
+            console.error('Error checking transaction status:', statusError);
+            addNotification({
+              type: 'error',
+              title: 'Error de Verificación',
+              message: `No se pudo verificar la transacción. Verifica manualmente en Solana Explorer: ${signature.slice(0, 8)}...`
+            });
+            return false;
+          }
+        }
+      }
+      
+      // Error general
       addNotification({
         type: 'error',
         title: 'Error en la donación',
@@ -687,6 +921,100 @@ const AppContent = () => {
       throw error
     }
   }, [])
+
+  // Función para refrescar datos de proyectos
+  const refreshProjectsData = useCallback(async () => {
+    try {
+      console.log('Refreshing projects data...')
+      const response = await fetch('http://localhost:3000/projects')
+      if (!response.ok) {
+        throw new Error('Error al recargar proyectos')
+      }
+      const data = await response.json()
+      
+      // Transformar los datos para que coincidan con el formato esperado por el frontend
+      const transformedProjects = data.map((project: any) => ({
+        id: project.id,
+        title: project.title,
+        description: project.description,
+        raised: project.current_amount,
+        goal: project.goal_amount,
+        daysLeft: project.deadline ? Math.max(0, Math.ceil((new Date(project.deadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))) : 0,
+        image: "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=400&h=250&fit=crop",
+        category: project.category,
+        creator_wallet: project.creator_wallet
+      }))
+      
+      setFeaturedProjects(transformedProjects)
+      
+      // Si hay un proyecto seleccionado, actualizarlo también
+      if (selectedProject) {
+        const updatedProject = transformedProjects.find((p: any) => p.id === selectedProject.id)
+        if (updatedProject) {
+          setSelectedProject(updatedProject)
+        }
+      }
+      
+      console.log('Projects data refreshed successfully')
+    } catch (error) {
+      console.error('Error refreshing projects:', error)
+    }
+  }, [selectedProject])
+
+  // Función para refrescar estadísticas
+  const refreshStats = useCallback(async () => {
+    try {
+      console.log('Refreshing stats...')
+      const response = await fetch('http://localhost:3000/stats')
+      if (!response.ok) {
+        throw new Error('Error al cargar estadísticas')
+      }
+      const data = await response.json()
+      setStats(data)
+      console.log('Stats refreshed successfully')
+    } catch (error) {
+      console.error('Error refreshing stats:', error)
+    }
+  }, [])
+
+  // Función para verificar una transacción manualmente
+  const verifyTransaction = useCallback(async (signature: string) => {
+    try {
+      const status = await connection.getSignatureStatus(signature)
+      console.log('Transaction status:', status)
+      
+      if (status.value?.confirmationStatus === 'confirmed' || 
+          status.value?.confirmationStatus === 'finalized') {
+        addNotification({
+          type: 'success',
+          title: 'Transacción Confirmada',
+          message: `La transacción ${signature.slice(0, 8)}... ha sido confirmada exitosamente`
+        })
+        // Refrescar datos después de confirmar
+        await refreshProjectsData()
+        await refreshStats()
+      } else if (status.value?.err) {
+        addNotification({
+          type: 'error',
+          title: 'Transacción Fallida',
+          message: `La transacción falló: ${status.value.err}`
+        })
+      } else {
+        addNotification({
+          type: 'info',
+          title: 'Transacción Pendiente',
+          message: `La transacción ${signature.slice(0, 8)}... aún está pendiente`
+        })
+      }
+    } catch (error) {
+      console.error('Error verificando transacción:', error)
+      addNotification({
+        type: 'error',
+        title: 'Error de Verificación',
+        message: 'No se pudo verificar el estado de la transacción'
+      })
+    }
+  }, [connection, addNotification, refreshProjectsData, refreshStats])
 
   // Función para obtener el icono de la categoría
   const getCategoryIcon = (categoryName: string) => {
@@ -1157,6 +1485,15 @@ const AppContent = () => {
             )}
           </div>
         </div>
+        </section>
+      )}
+
+      {/* Transaction Verifier - Only show when wallet is connected */}
+      {connected && (
+        <section className="transaction-verifier-section">
+          <div className="container">
+            <TransactionVerifier verifyTransaction={verifyTransaction} />
+          </div>
         </section>
       )}
 

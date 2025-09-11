@@ -311,6 +311,115 @@ const TransactionVerifier = ({ verifyTransaction }: { verifyTransaction: (signat
   )
 }
 
+// Componente de diagnóstico de conexión
+const ConnectionDiagnostic = () => {
+  const { connection } = useConnection()
+  const { publicKey, connected } = useWallet()
+  const [diagnostics, setDiagnostics] = useState<any>({})
+  const [isRunning, setIsRunning] = useState(false)
+
+  const runDiagnostics = async () => {
+    if (!connected || !publicKey) return
+    
+    setIsRunning(true)
+    const results: any = {}
+    
+    try {
+      // Test 1: Verificar conexión RPC
+      console.log('Testing RPC connection...')
+      const version = await connection.getVersion()
+      results.rpcConnection = { status: 'OK', version }
+      
+      // Test 2: Verificar balance
+      console.log('Testing balance fetch...')
+      const balance = await connection.getBalance(publicKey)
+      results.balance = { status: 'OK', balance: balance / LAMPORTS_PER_SOL }
+      
+      // Test 3: Verificar blockhash reciente
+      console.log('Testing recent blockhash...')
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash()
+      results.blockhash = { status: 'OK', blockhash: blockhash.slice(0, 8) + '...', lastValidBlockHeight }
+      
+      // Test 4: Verificar slot actual
+      console.log('Testing current slot...')
+      const slot = await connection.getSlot()
+      results.slot = { status: 'OK', slot }
+      
+    } catch (error: any) {
+      results.error = { status: 'ERROR', message: error.message }
+    }
+    
+    setDiagnostics(results)
+    setIsRunning(false)
+  }
+
+  if (!connected) return null
+
+  return (
+    <div className="connection-diagnostic">
+      <h4>🔧 Diagnóstico de Conexión</h4>
+      <button onClick={runDiagnostics} disabled={isRunning} className="diagnostic-btn">
+        {isRunning ? 'Ejecutando...' : 'Ejecutar Diagnóstico'}
+      </button>
+      
+      {Object.keys(diagnostics).length > 0 && (
+        <div className="diagnostic-results">
+          {Object.entries(diagnostics).map(([key, value]: [string, any]) => (
+            <div key={key} className={`diagnostic-item ${value.status}`}>
+              <strong>{key}:</strong> {value.status}
+              {value.balance !== undefined && <span> - {value.balance.toFixed(6)} SOL</span>}
+              {value.blockhash && <span> - {value.blockhash}</span>}
+              {value.slot && <span> - Slot: {value.slot}</span>}
+              {value.message && <span> - {value.message}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Componente para obtener SOL de prueba
+const DevnetFaucet = () => {
+  const { publicKey, connected } = useWallet()
+  const [isRequesting, setIsRequesting] = useState(false)
+
+  const requestAirdrop = async () => {
+    if (!connected || !publicKey) return
+    
+    setIsRequesting(true)
+    try {
+      // Abrir el faucet oficial de Solana en una nueva pestaña
+      const faucetURL = `https://faucet.solana.com/?address=${publicKey.toString()}&cluster=devnet`
+      window.open(faucetURL, '_blank')
+      
+      // También mostrar instrucciones
+      alert(`Se abrió el faucet de Solana en una nueva pestaña.\n\nTambién puedes obtener SOL usando CLI:\nsolana airdrop 2 ${publicKey.toString()} --url devnet`)
+      
+    } catch (error) {
+      console.error('Error opening faucet:', error)
+      alert('Error al abrir el faucet. Puedes visitar manualmente: https://faucet.solana.com/')
+    } finally {
+      setIsRequesting(false)
+    }
+  }
+
+  if (!connected) return null
+
+  return (
+    <div className="devnet-faucet">
+      <h4>💰 Obtener SOL de Prueba</h4>
+      <p>¿Necesitas SOL para hacer donaciones? Obtén SOL gratuito en devnet:</p>
+      <button onClick={requestAirdrop} disabled={isRequesting} className="faucet-btn">
+        {isRequesting ? 'Abriendo faucet...' : 'Abrir Faucet de Solana'}
+      </button>
+      <small>
+        También puedes usar CLI: <code>solana airdrop 2 {publicKey?.toString()} --url devnet</code>
+      </small>
+    </div>
+  )
+}
+
 // Componente para las tarjetas de proyectos
 const ProjectCard = ({ 
   title, 
@@ -647,16 +756,40 @@ const AppContent = () => {
     try {
       console.log('Processing donation...', { project, donationAmount })
       
-      // Convertir la cantidad de SOL a lamports
+      // Verificar que tenemos suficiente balance
+      const balance = await connection.getBalance(publicKey)
+      const balanceInSol = balance / LAMPORTS_PER_SOL
       const lamports = donationAmount * LAMPORTS_PER_SOL
-      console.log('Donation amount in lamports:', lamports)
+      const transactionFee = 0.000005 // Aproximadamente 0.000005 SOL por fee de transacción
+      
+      console.log('Wallet balance:', balanceInSol, 'SOL')
+      console.log('Donation amount:', donationAmount, 'SOL')
+      console.log('Estimated fee:', transactionFee, 'SOL')
+      
+      if (balanceInSol < (donationAmount + transactionFee)) {
+        addNotification({
+          type: 'error',
+          title: 'Balance insuficiente',
+          message: `Necesitas al menos ${donationAmount + transactionFee} SOL (incluyendo fees). Tu balance: ${balanceInSol.toFixed(6)} SOL`
+        })
+        return false
+      }
 
       // Crear la dirección pública del creador del proyecto
       const creatorPublicKey = new PublicKey(project.creator_wallet)
       console.log('Creator wallet:', project.creator_wallet)
 
-      // Crear la transacción de transferencia
-      const transaction = new Transaction().add(
+      // Obtener un blockhash reciente para mejorar las probabilidades de éxito
+      console.log('Getting recent blockhash...')
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed')
+      console.log('Recent blockhash:', blockhash)
+
+      // Crear la transacción de transferencia con blockhash reciente
+      const transaction = new Transaction({
+        feePayer: publicKey,
+        blockhash: blockhash,
+        lastValidBlockHeight: lastValidBlockHeight,
+      }).add(
         SystemProgram.transfer({
           fromPubkey: publicKey,
           toPubkey: creatorPublicKey,
@@ -664,10 +797,21 @@ const AppContent = () => {
         })
       )
 
-      console.log('Transaction created, requesting signature...')
+      console.log('Transaction created with recent blockhash, requesting signature...')
       
+      addNotification({
+        type: 'info',
+        title: 'Preparando transacción',
+        message: 'Confirma la transacción en tu wallet...'
+      })
+
       // Enviar la transacción y obtener la signatura
-      const signature = await sendTransaction(transaction, connection)
+      const signature = await sendTransaction(transaction, connection, {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+        maxRetries: 3,
+      })
+      
       console.log('Transaction signature:', signature)
 
       addNotification({
@@ -676,53 +820,45 @@ const AppContent = () => {
         message: 'Esperando confirmación en la blockchain...'
       })
 
-      // Esperar confirmación de la transacción con timeout extendido
+      // Usar el método mejorado de confirmación
       console.log('Waiting for transaction confirmation...')
       
       try {
-        // Intentar confirmar con timeout extendido
-        const confirmation = await Promise.race([
-          connection.confirmTransaction(signature, 'confirmed'),
-          new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('TIMEOUT')), 60000) // 60 segundos
-          )
-        ]) as any
+        // Confirmar la transacción usando el blockhash y altura válida
+        const confirmation = await connection.confirmTransaction({
+          signature: signature,
+          blockhash: blockhash,
+          lastValidBlockHeight: lastValidBlockHeight,
+        }, 'confirmed')
         
-        if (confirmation.value && confirmation.value.err) {
-          throw new Error('Transaction failed: ' + confirmation.value.err)
+        if (confirmation.value.err) {
+          throw new Error('Transaction failed: ' + JSON.stringify(confirmation.value.err))
         }
         
-        console.log('Transaction confirmed successfully')
+        console.log('Transaction confirmed successfully:', confirmation)
         
-      } catch (timeoutError: any) {
-        if (timeoutError.message === 'TIMEOUT') {
-          console.log('Transaction timeout, checking status...')
-          
-          // Verificar el estado de la transacción manualmente
-          try {
-            const status = await connection.getSignatureStatus(signature)
-            console.log('Transaction status:', status)
-            
-            if (status.value?.confirmationStatus === 'confirmed' || 
-                status.value?.confirmationStatus === 'finalized') {
-              console.log('Transaction was actually confirmed!')
-            } else if (status.value?.err) {
-              throw new Error('Transaction failed: ' + status.value.err)
-            } else {
-              // La transacción está pendiente, continuar de todos modos
-              addNotification({
-                type: 'warning',
-                title: 'Transacción Pendiente',
-                message: `La transacción está pendiente de confirmación. Signature: ${signature.slice(0, 8)}...`
-              })
-              console.log('Transaction is still pending, proceeding...')
-            }
-          } catch (statusError) {
-            console.error('Error checking transaction status:', statusError)
-            throw new Error(`Transaction timeout. Please check signature ${signature} in Solana Explorer`)
-          }
+      } catch (confirmError: any) {
+        console.log('Confirmation error, checking status manually...', confirmError)
+        
+        // Verificar el estado de la transacción manualmente
+        const status = await connection.getSignatureStatus(signature)
+        console.log('Manual status check:', status)
+        
+        if (status.value?.confirmationStatus === 'confirmed' || 
+            status.value?.confirmationStatus === 'finalized') {
+          console.log('Transaction was actually confirmed!')
+        } else if (status.value?.err) {
+          throw new Error('Transaction failed: ' + JSON.stringify(status.value.err))
         } else {
-          throw timeoutError
+          // La transacción está pendiente
+          addNotification({
+            type: 'warning',
+            title: 'Transacción Pendiente',
+            message: `La transacción está pendiente. Verifica en Solana Explorer: ${signature.slice(0, 8)}...`
+          })
+          console.log('Transaction is still pending. Signature:', signature)
+          console.log(`Check status: https://explorer.solana.com/tx/${signature}?cluster=devnet`)
+          return false
         }
       }
 
@@ -747,7 +883,7 @@ const AppContent = () => {
         })
       }
 
-      // Mostrar feedback inmediato actualizar el proyecto localmente
+      // Mostrar feedback inmediato y actualizar el proyecto localmente
       const updatedProject = {
         ...project,
         raised: project.raised + donationAmount
@@ -762,7 +898,11 @@ const AppContent = () => {
         message: `Has donado ${donationAmount} SOL al proyecto "${project.title}". Signature: ${signature.slice(0, 8)}...`
       })
 
-      // Mostrar enlace al explorer en consola para debugging
+      // Actualizar datos después de la confirmación
+      await refreshProjectsData()
+      await refreshStats()
+
+      // Mostrar enlace al explorer
       console.log(`Transaction completed! View on Solana Explorer: https://explorer.solana.com/tx/${signature}?cluster=devnet`)
 
       return true
@@ -1507,11 +1647,15 @@ const AppContent = () => {
         </section>
       )}
 
-      {/* Transaction Verifier - Only show when wallet is connected */}
+      {/* Transaction Verifier and Diagnostics - Only show when wallet is connected */}
       {connected && (
         <section className="transaction-verifier-section">
           <div className="container">
             <TransactionVerifier verifyTransaction={verifyTransaction} />
+            <div className="diagnostic-section">
+              <ConnectionDiagnostic />
+              <DevnetFaucet />
+            </div>
           </div>
         </section>
       )}
@@ -1577,7 +1721,19 @@ const AppContent = () => {
 function App() {
   // Configuración de la red de Solana (devnet para desarrollo)
   const network = WalletAdapterNetwork.Devnet
-  const endpoint = useMemo(() => clusterApiUrl(network), [network])
+  
+  // Usar múltiples endpoints para mayor confiabilidad
+  const endpoint = useMemo(() => {
+    // Endpoints de devnet más confiables
+    const endpoints = [
+      'https://api.devnet.solana.com',
+      clusterApiUrl(network),
+      'https://devnet.helius-rpc.com/?api-key=public', // RPC público alternativo
+    ]
+    
+    // Usar el primer endpoint por defecto
+    return endpoints[0]
+  }, [network])
   
   // Lista de wallets soportados
   const wallets = useMemo(
@@ -1587,8 +1743,14 @@ function App() {
     []
   )
 
+  // Configuración adicional para la conexión
+  const connectionConfig = useMemo(() => ({
+    commitment: 'confirmed' as const,
+    confirmTransactionInitialTimeout: 60000, // 60 segundos
+  }), [])
+
   return (
-    <ConnectionProvider endpoint={endpoint}>
+    <ConnectionProvider endpoint={endpoint} config={connectionConfig}>
       <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>
           <AppContent />

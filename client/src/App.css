@@ -381,6 +381,124 @@ body {
   border-color: rgba(255, 255, 255, 0.5);
 }
 
+/* My Projects */
+.my-projects {
+  padding: 5rem 0;
+  min-height: 100vh;
+}
+
+.my-projects-content {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.my-projects-content h1 {
+  text-align: center;
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+  font-weight: 700;
+  background: linear-gradient(45deg, #00d4ff, #b347d9);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.my-projects-content > p {
+  text-align: center;
+  font-size: 1.1rem;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 3rem;
+}
+
+.wallet-connect-message,
+.no-projects {
+  text-align: center;
+  padding: 4rem 2rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 2rem 0;
+}
+
+.wallet-connect-message h3,
+.no-projects h3 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  color: #00d4ff;
+}
+
+.wallet-connect-message p,
+.no-projects p {
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 2rem;
+}
+
+.projects-summary {
+  margin-bottom: 3rem;
+}
+
+.projects-summary h3 {
+  font-size: 1.5rem;
+  margin-bottom: 1.5rem;
+  color: #00d4ff;
+}
+
+.summary-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.summary-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 15px;
+  padding: 1.5rem;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.summary-number {
+  display: block;
+  font-size: 2rem;
+  font-weight: 700;
+  color: #00d4ff;
+  margin-bottom: 0.5rem;
+}
+
+.summary-label {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.9rem;
+}
+
+.user-projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 2rem;
+}
+
+.loading {
+  text-align: center;
+  padding: 3rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.my-projects-actions {
+  text-align: center;
+  padding: 2rem;
+}
+
+.my-projects-actions p {
+  margin-bottom: 1.5rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.my-projects-actions .btn-primary {
+  margin-bottom: 2rem;
+}
+
 /* Featured Projects */
 .featured-projects {
   padding: 5rem 0;

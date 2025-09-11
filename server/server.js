@@ -48,6 +48,34 @@ app.get('/projects', async (req, res) => {
   }
 })
 
+// Endpoint para obtener proyectos de un usuario específico
+app.get('/projects/user/:wallet_address', async (req, res) => {
+  try {
+    const { wallet_address } = req.params
+    const result = await pool.query(`
+      SELECT 
+        p.id, 
+        p.title, 
+        p.description, 
+        p.goal_amount, 
+        p.current_amount, 
+        p.category, 
+        p.deadline,
+        p.created_at,
+        u.wallet_address AS creator_wallet,
+        (SELECT COUNT(*) FROM donations WHERE project_id = p.id) as donation_count
+      FROM projects p
+      JOIN users u ON p.creator_id = u.id
+      WHERE u.wallet_address = $1
+      ORDER BY p.created_at DESC
+    `, [wallet_address])
+    res.json(result.rows)
+  } catch (err) {
+    console.error('Error fetching user projects:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // Endpoint para obtener estadísticas calculadas
 app.get('/stats', async (req, res) => {
   try {
@@ -231,6 +259,24 @@ app.get('/projects/:id/donations', async (req, res) => {
     `, [id])
     res.json(result.rows)
   } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// 5. Obtener proyectos de un usuario específico por wallet address
+app.get('/projects/user/:wallet_address', async (req, res) => {
+  const { wallet_address } = req.params
+  console.log('Getting projects for wallet:', wallet_address)
+  try {
+    const result = await pool.query(`
+      SELECT * FROM projects WHERE creator_wallet = $1
+      ORDER BY created_at DESC
+    `, [wallet_address])
+    
+    console.log('Found projects:', result.rows.length)
+    res.json(result.rows)
+  } catch (err) {
+    console.error('Error fetching user projects:', err)
     res.status(500).json({ error: err.message })
   }
 })

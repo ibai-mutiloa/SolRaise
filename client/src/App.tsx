@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Connection, clusterApiUrl, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js'
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base'
 import {
@@ -211,15 +211,15 @@ const AppContent = () => {
   const { connected, publicKey } = useWallet()
 
   // Función para agregar notificaciones
-  const addNotification = (notification: Omit<Notification, 'id'>) => {
+  const addNotification = useCallback((notification: Omit<Notification, 'id'>) => {
     const id = Date.now().toString()
     setNotifications(prev => [...prev, { ...notification, id }])
-  }
+  }, [])
 
   // Función para remover notificaciones
-  const removeNotification = (id: string) => {
+  const removeNotification = useCallback((id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id))
-  }
+  }, [])
 
   const handleContribute = (project: any) => {
     if (!connected) {
@@ -250,6 +250,10 @@ const AppContent = () => {
   // Estado para las categorías desde la API
   const [categories, setCategories] = useState<any[]>([])
   const [loadingCategories, setLoadingCategories] = useState(true)
+
+  // Estado para los proyectos del usuario
+  const [userProjects, setUserProjects] = useState<any[]>([])
+  const [loadingUserProjects, setLoadingUserProjects] = useState(false)
 
   // Estado para el formulario de crear proyecto
   const [createProjectForm, setCreateProjectForm] = useState({
@@ -366,6 +370,75 @@ const AppContent = () => {
 
     loadCategories()
   }, [])
+
+  // Función para cargar proyectos del usuario
+  const loadUserProjects = useCallback(async () => {
+    console.log('loadUserProjects called', { connected, publicKey: publicKey?.toString() })
+    
+    if (!connected || !publicKey) {
+      console.log('Wallet not connected, returning')
+      return
+    }
+
+    try {
+      console.log('Starting to load user projects...')
+      setLoadingUserProjects(true)
+      const walletAddress = publicKey.toString()
+      console.log('Fetching projects for wallet:', walletAddress)
+      
+      const response = await fetch(`http://localhost:3000/projects/user/${walletAddress}`)
+      console.log('Response status:', response.status)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      const data = await response.json()
+      console.log('Raw data from API:', data)
+      
+      // Verificar si data es un array
+      if (!Array.isArray(data)) {
+        console.error('API did not return an array:', data)
+        throw new Error('Invalid data format from API')
+      }
+      
+      // Transformar los datos para que coincidan con el formato esperado por el frontend
+      const transformedProjects = data.map((project: any) => {
+        console.log('Transforming project:', project)
+        return {
+          id: project.id,
+          title: project.title,
+          description: project.description,
+          raised: parseFloat(project.current_amount) || 0,
+          goal: parseFloat(project.goal_amount) || 0,
+          daysLeft: project.deadline ? Math.max(0, Math.ceil((new Date(project.deadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))) : 0,
+          image: "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=400&h=250&fit=crop",
+          category: project.category,
+          creator_wallet: project.creator_wallet
+        }
+      })
+      
+      console.log('Transformed projects:', transformedProjects)
+      setUserProjects(transformedProjects)
+      
+      addNotification({
+        type: 'success',
+        title: 'Éxito',
+        message: `Se cargaron ${transformedProjects.length} proyectos`
+      })
+      
+    } catch (error) {
+      console.error('Error cargando proyectos del usuario:', error)
+      addNotification({
+        type: 'error',
+        title: 'Error',
+        message: `No se pudieron cargar tus proyectos: ${error instanceof Error ? error.message : 'Error desconocido'}`
+      })
+    } finally {
+      console.log('Setting loading to false')
+      setLoadingUserProjects(false)
+    }
+  }, [connected, publicKey, addNotification])
 
   // Función para obtener el icono de la categoría
   const getCategoryIcon = (categoryName: string) => {
@@ -649,6 +722,110 @@ const AppContent = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* My Projects Section */}
+      {activeTab === 'my-projects' && (
+        <section className="my-projects">
+          <div className="container">
+            <div className="my-projects-content">
+              <h1>Mis Proyectos</h1>
+              <p>Gestiona y monitorea tus proyectos de crowdfunding</p>
+              
+              {!connected ? (
+                <div className="wallet-connect-message">
+                  <h3>🔗 Conecta tu Wallet</h3>
+                  <p>Para ver tus proyectos, necesitas conectar tu wallet de Solana</p>
+                  <WalletMultiButton className="wallet-btn" />
+                </div>
+              ) : (
+                <div className="my-projects-actions">
+                  <p>Wallet conectado: {publicKey?.toString().slice(0, 8)}...</p>
+                  <button 
+                    className="btn-primary"
+                    onClick={async () => {
+                      try {
+                        console.log('Button clicked, calling loadUserProjects')
+                        await loadUserProjects()
+                        console.log('loadUserProjects completed successfully')
+                      } catch (error) {
+                        console.error('Error in button click:', error)
+                        addNotification({
+                          type: 'error',
+                          title: 'Error',
+                          message: 'Error al hacer clic en el botón'
+                        })
+                      }
+                    }}
+                    disabled={loadingUserProjects}
+                  >
+                    {loadingUserProjects ? 'Cargando...' : 'Cargar Mis Proyectos'}
+                  </button>
+                  
+                  {loadingUserProjects && (
+                    <div className="loading">
+                      <p>Cargando tus proyectos...</p>
+                    </div>
+                  )}
+                  
+                  {!loadingUserProjects && userProjects.length === 0 && (
+                    <div className="no-projects">
+                      <h3>📝 No tienes proyectos aún</h3>
+                      <p>¡Comienza creando tu primer proyecto y comparte tu idea con la comunidad!</p>
+                      <button 
+                        className="btn-primary"
+                        onClick={() => setActiveTab('create')}
+                      >
+                        Crear Mi Primer Proyecto
+                      </button>
+                    </div>
+                  )}
+                  
+                  {!loadingUserProjects && userProjects.length > 0 && (
+                    <>
+                      <div className="projects-summary">
+                        <h3>Resumen de tus proyectos</h3>
+                        <div className="summary-stats">
+                          <div className="summary-card">
+                            <span className="summary-number">{userProjects.length}</span>
+                            <span className="summary-label">Proyectos Creados</span>
+                          </div>
+                          <div className="summary-card">
+                            <span className="summary-number">
+                              {userProjects.reduce((total, project) => total + project.raised, 0).toFixed(2)} SOL
+                            </span>
+                            <span className="summary-label">Total Recaudado</span>
+                          </div>
+                          <div className="summary-card">
+                            <span className="summary-number">
+                              {userProjects.reduce((total, project) => total + project.goal, 0).toFixed(2)} SOL
+                            </span>
+                            <span className="summary-label">Meta Total</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="user-projects-grid">
+                        {userProjects.map((project) => (
+                          <ProjectCard
+                            key={project.id}
+                            title={project.title}
+                            description={project.description}
+                            raised={project.raised}
+                            goal={project.goal}
+                            daysLeft={project.daysLeft}
+                            image={project.image}
+                            onContribute={() => handleContribute(project)}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </section>

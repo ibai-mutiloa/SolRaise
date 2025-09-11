@@ -475,7 +475,7 @@ const AppContent = () => {
           raised: project.current_amount,
           goal: project.goal_amount,
           daysLeft: project.deadline ? Math.max(0, Math.ceil((new Date(project.deadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))) : 0,
-          image: "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=400&h=250&fit=crop",
+          image: getCategoryImage(project.category),
           category: project.category,
           creator_wallet: project.creator_wallet
         }))
@@ -497,7 +497,9 @@ const AppContent = () => {
             raised: 1250,
             goal: 5000,
             daysLeft: 15,
-            image: "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=400&h=250&fit=crop"
+            image: getCategoryImage("Gaming"),
+            category: "Gaming",
+            creator_wallet: "SoL4n4WALLETtest1234567890abc"
           }
         ])
       } finally {
@@ -603,7 +605,7 @@ const AppContent = () => {
           raised: parseFloat(project.current_amount) || 0,
           goal: parseFloat(project.goal_amount) || 0,
           daysLeft: project.deadline ? Math.max(0, Math.ceil((new Date(project.deadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))) : 0,
-          image: "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=400&h=250&fit=crop",
+          image: getCategoryImage(project.category),
           category: project.category,
           creator_wallet: project.creator_wallet
         }
@@ -940,7 +942,7 @@ const AppContent = () => {
         raised: project.current_amount,
         goal: project.goal_amount,
         daysLeft: project.deadline ? Math.max(0, Math.ceil((new Date(project.deadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))) : 0,
-        image: "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=400&h=250&fit=crop",
+        image: getCategoryImage(project.category),
         category: project.category,
         creator_wallet: project.creator_wallet
       }))
@@ -1028,6 +1030,23 @@ const AppContent = () => {
       'default': '📦'
     }
     return icons[categoryName] || icons['default']
+  }
+
+  // Función para obtener imagen específica por categoría
+  const getCategoryImage = (categoryName: string) => {
+    const images: { [key: string]: string } = {
+      'Gaming': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=400&h=250&fit=crop&auto=format',
+      'DeFi': 'https://images.unsplash.com/photo-1639762681485-074b7f938ba0?w=400&h=250&fit=crop&auto=format',
+      'NFT': 'https://images.unsplash.com/photo-1634973357973-f2ed2657db3c?w=400&h=250&fit=crop&auto=format',
+      'Green Tech': 'https://images.unsplash.com/photo-1497435334941-8c899ee9e8e9?w=400&h=250&fit=crop&auto=format',
+      'Educación': 'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=400&h=250&fit=crop&auto=format',
+      'Herramientas': 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=400&h=250&fit=crop&auto=format',
+      'Sostenibilidad': 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=400&h=250&fit=crop&auto=format',
+      'Energía': 'https://images.unsplash.com/photo-1466611653911-95081537e5b7?w=400&h=250&fit=crop&auto=format',
+      'Other': 'https://images.unsplash.com/photo-1553877522-43269d4ea984?w=400&h=250&fit=crop&auto=format',
+      'default': 'https://images.unsplash.com/photo-1553877522-43269d4ea984?w=400&h=250&fit=crop&auto=format'
+    }
+    return images[categoryName] || images['default']
   }
 
   // Función para manejar cambios en el formulario de crear proyecto

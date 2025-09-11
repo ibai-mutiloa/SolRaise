@@ -57,6 +57,35 @@ body {
   padding: 1rem 0;
 }
 
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.logo:hover {
+  transform: translateY(-1px);
+}
+
+.logo-image {
+  height: 40px;
+  width: auto;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 212, 255, 0.2);
+  transition: all 0.3s ease;
+}
+
+.logo:hover .logo-image {
+  box-shadow: 0 4px 12px rgba(0, 212, 255, 0.4);
+}
+
+.logo-text {
+  display: flex;
+  flex-direction: column;
+}
+
 .logo h1 {
   font-size: 1.8rem;
   font-weight: 800;
@@ -1897,7 +1926,30 @@ section .container {
     padding: 1.5rem 0;
   }
   
+  .logo-image {
+    height: 45px;
+  }
+  
   .logo h1 {
     font-size: 2rem;
+  }
+}
+
+/* Estilos responsivos para móviles */
+@media (max-width: 768px) {
+  .logo {
+    gap: 8px;
+  }
+  
+  .logo-image {
+    height: 32px;
+  }
+  
+  .logo h1 {
+    font-size: 1.4rem;
+  }
+  
+  .logo p {
+    font-size: 0.7rem;
   }
 }

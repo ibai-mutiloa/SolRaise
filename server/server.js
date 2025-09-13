@@ -38,6 +38,8 @@ app.get('/projects', async (req, res) => {
         p.current_amount, 
         p.category, 
         p.deadline, 
+        p.social_platform,
+        p.social_url,
         u.wallet_address AS creator_wallet
       FROM projects p
       JOIN users u ON p.creator_id = u.id
@@ -203,13 +205,13 @@ app.get('/users/:wallet_address', async (req, res) => {
 
 // 2. Crear un nuevo proyecto
 app.post('/projects', async (req, res) => {
-  const { creator_id, title, description, goal_amount, category, deadline } = req.body
+  const { creator_id, title, description, goal_amount, category, deadline, social_platform, social_url } = req.body
   try {
     const result = await pool.query(`
-      INSERT INTO projects (creator_id, title, description, goal_amount, category, deadline)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO projects (creator_id, title, description, goal_amount, category, deadline, social_platform, social_url)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *;
-    `, [creator_id, title, description, goal_amount, category, deadline])
+    `, [creator_id, title, description, goal_amount, category, deadline, social_platform, social_url])
     res.status(201).json(result.rows[0])
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -280,6 +282,102 @@ app.get('/projects/user/:wallet_address', async (req, res) => {
     res.status(500).json({ error: err.message })
   }
 })
+
+// 6. Eliminar un proyecto (solo el creador puede hacerlo)
+app.delete('/projects/:id', async (req, res) => {
+  const { id } = req.params
+  const { creator_wallet } = req.body
+  
+  if (!creator_wallet) {
+    return res.status(400).json({ error: 'Creator wallet address is required' })
+  }
+  
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    
+    // Verificar que el proyecto existe y pertenece al creador
+    const projectResult = await client.query(`
+      SELECT p.*, u.wallet_address as creator_wallet 
+      FROM projects p
+      JOIN users u ON p.creator_id = u.id
+      WHERE p.id = $1
+    `, [id])
+    
+    if (projectResult.rows.length === 0) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ error: 'Project not found' })
+    }
+    
+    const project = projectResult.rows[0]
+    if (project.creator_wallet !== creator_wallet) {
+      await client.query('ROLLBACK')
+      return res.status(403).json({ error: 'Only the project creator can delete this project' })
+    }
+    
+    // Eliminar todas las donaciones del proyecto primero
+    await client.query('DELETE FROM donations WHERE project_id = $1', [id])
+    
+    // Eliminar el proyecto
+    await client.query('DELETE FROM projects WHERE id = $1', [id])
+    
+    await client.query('COMMIT')
+    res.json({ message: 'Project deleted successfully', deletedProject: project })
+    
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error('Error deleting project:', err)
+    res.status(500).json({ error: err.message })
+  } finally {
+    client.release()
+  }
+})
+
+// Endpoint para limpiar todos los proyectos (solo para desarrollo)
+app.delete('/projects/cleanup', async (req, res) => {
+  try {
+    // Primero eliminar todas las donaciones
+    await pool.query('DELETE FROM donations')
+    console.log('Donations deleted')
+    
+    // Luego eliminar todos los proyectos
+    await pool.query('DELETE FROM projects')
+    console.log('Projects deleted')
+    
+    // Resetear secuencias
+    await pool.query('ALTER SEQUENCE projects_id_seq RESTART WITH 1')
+    await pool.query('ALTER SEQUENCE donations_id_seq RESTART WITH 1')
+    
+    res.json({ message: 'All projects and donations cleaned successfully' })
+  } catch (err) {
+    console.error('Error cleaning projects:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Función para agregar columnas de redes sociales a la tabla projects
+async function addSocialMediaColumns() {
+  try {
+    // Agregar columna de plataforma social si no existe
+    await pool.query(`
+      ALTER TABLE projects 
+      ADD COLUMN IF NOT EXISTS social_platform VARCHAR(20) DEFAULT NULL
+    `)
+    
+    // Agregar columna de URL social si no existe
+    await pool.query(`
+      ALTER TABLE projects 
+      ADD COLUMN IF NOT EXISTS social_url VARCHAR(255) DEFAULT NULL
+    `)
+    
+    console.log('Social media columns added to projects table')
+  } catch (err) {
+    console.error('Error adding social media columns:', err)
+  }
+}
+
+// Ejecutar migración al iniciar el servidor
+addSocialMediaColumns()
 
 app.listen(3000, () => {
   console.log('API running on port 3000')

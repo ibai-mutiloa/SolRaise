@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { Connection, clusterApiUrl, PublicKey, LAMPORTS_PER_SOL, Transaction, SystemProgram } from '@solana/web3.js'
+import { clusterApiUrl, PublicKey, LAMPORTS_PER_SOL, Transaction, SystemProgram } from '@solana/web3.js'
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base'
 import {
   ConnectionProvider,
@@ -9,8 +9,7 @@ import {
 } from '@solana/wallet-adapter-react'
 import {
   WalletModalProvider,
-  WalletMultiButton,
-  WalletDisconnectButton
+  WalletMultiButton
 } from '@solana/wallet-adapter-react-ui'
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom'
 import './App.css'
@@ -428,7 +427,12 @@ const ProjectCard = ({
   goal, 
   daysLeft, 
   image,
-  onContribute 
+  socialPlatform,
+  socialUrl,
+  creatorWallet,
+  currentUserWallet,
+  onContribute,
+  onDelete
 }: {
   title: string
   description: string
@@ -436,15 +440,50 @@ const ProjectCard = ({
   goal: number
   daysLeft: number
   image: string
+  socialPlatform?: string
+  socialUrl?: string
+  creatorWallet?: string
+  currentUserWallet?: string
   onContribute: () => void
+  onDelete?: () => void
 }) => {
   const progress = (raised / goal) * 100
+  const isCreator = currentUserWallet && creatorWallet && currentUserWallet === creatorWallet
+  const isOwnerProject = creatorWallet === '449ptrc7xwP2BB2EQkej6dLmBRxbhLxcWitCha8khL1z'
+
+  // Función para obtener el ícono de la red social
+  const getSocialIcon = (platform: string) => {
+    switch (platform) {
+      case 'instagram':
+        return '�'
+      case 'twitter':
+        return '𝕏'
+      default:
+        return '🔗'
+    }
+  }
 
   return (
     <div className="project-card">
       <img src={image} alt={title} className="project-image" />
       <div className="project-content">
-        <h3>{title}</h3>
+        <div className="project-header">
+          <h3>
+            {title}
+            {isOwnerProject && <span className="owner-star" title="Proyecto oficial de SolRaise">⭐</span>}
+          </h3>
+          {socialPlatform && socialUrl && (
+            <a 
+              href={socialUrl} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="social-link"
+              title={`Seguir en ${socialPlatform === 'instagram' ? 'Instagram' : 'Twitter'}`}
+            >
+              {getSocialIcon(socialPlatform)}
+            </a>
+          )}
+        </div>
         <p>{description}</p>
         <div className="progress-container">
           <div className="progress-bar">
@@ -462,9 +501,16 @@ const ProjectCard = ({
           <span className="goal">Meta: {goal.toLocaleString()} SOL</span>
           <span className="days-left">{daysLeft} días restantes</span>
         </div>
-        <button className="contribute-btn" onClick={onContribute}>
-          Contribuir
-        </button>
+        <div className="project-actions">
+          <button className="contribute-btn" onClick={onContribute}>
+            Contribuir
+          </button>
+          {isCreator && onDelete && (
+            <button className="delete-btn" onClick={onDelete} title="Eliminar proyecto">
+              🗑️
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -522,6 +568,60 @@ const AppContent = () => {
     setShowContributeModal(true)
   }
 
+  const handleDeleteProject = async (project: any) => {
+    if (!connected || !publicKey) {
+      addNotification({
+        type: 'warning',
+        title: 'Wallet no conectado',
+        message: 'Por favor conecta tu wallet para eliminar el proyecto'
+      })
+      return
+    }
+
+    // Eliminar directamente sin confirmación
+    // const confirmDelete = window.confirm(`¿Estás seguro de que quieres eliminar el proyecto "${project.title}"? Esta acción no se puede deshacer.`)
+    // if (!confirmDelete) {
+    //   return
+    // }
+
+    try {
+      const response = await fetch(`http://localhost:3000/projects/${project.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          creator_wallet: publicKey.toString()
+        })
+      })
+
+      if (response.ok) {
+        addNotification({
+          type: 'success',
+          title: 'Proyecto Eliminado',
+          message: 'El proyecto ha sido eliminado exitosamente'
+        })
+        // Refresh the project list
+        await refreshProjectsData()
+        await refreshStats()
+      } else {
+        const errorData = await response.json()
+        addNotification({
+          type: 'error',
+          title: 'Error al Eliminar',
+          message: errorData.error || 'No se pudo eliminar el proyecto'
+        })
+      }
+    } catch (error) {
+      console.error('Error deleting project:', error)
+      addNotification({
+        type: 'error',
+        title: 'Error',
+        message: 'Ocurrió un error al eliminar el proyecto'
+      })
+    }
+  }
+
   const handleDonation = async (amount: number): Promise<boolean> => {
     if (!selectedProject) return false
     const success = await processDonation(selectedProject, amount)
@@ -561,7 +661,9 @@ const AppContent = () => {
     description: '',
     goal_amount: '',
     category: '',
-    deadline: ''
+    deadline: '',
+    social_platform: '', // 'instagram' o 'twitter'
+    social_url: ''
   })
   const [isCreatingProject, setIsCreatingProject] = useState(false)
 
@@ -586,7 +688,9 @@ const AppContent = () => {
           daysLeft: project.deadline ? Math.max(0, Math.ceil((new Date(project.deadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))) : 0,
           image: getCategoryImage(project.category),
           category: project.category,
-          creator_wallet: project.creator_wallet
+          creator_wallet: project.creator_wallet,
+          socialPlatform: project.social_platform,
+          socialUrl: project.social_url
         }))
         
         setFeaturedProjects(transformedProjects)
@@ -1254,7 +1358,9 @@ const AppContent = () => {
         description: createProjectForm.description,
         goal_amount: parseFloat(createProjectForm.goal_amount),
         category: createProjectForm.category || 'Other',
-        deadline: createProjectForm.deadline ? new Date(createProjectForm.deadline).toISOString() : null
+        deadline: createProjectForm.deadline ? new Date(createProjectForm.deadline).toISOString() : null,
+        social_platform: createProjectForm.social_platform || null,
+        social_url: createProjectForm.social_url || null
       }
 
       const response = await fetch('http://localhost:3000/projects', {
@@ -1266,7 +1372,7 @@ const AppContent = () => {
       })
 
       if (response.ok) {
-        const newProject = await response.json()
+        await response.json()
         addNotification({
           type: 'success',
           title: 'Éxito',
@@ -1279,7 +1385,9 @@ const AppContent = () => {
           description: '',
           goal_amount: '',
           category: '',
-          deadline: ''
+          deadline: '',
+          social_platform: '',
+          social_url: ''
         })
         
         // Switch to explore tab and reload projects
@@ -1440,6 +1548,43 @@ const AppContent = () => {
                   />
                 </div>
 
+                {/* Campo de redes sociales */}
+                <div className="form-section">
+                  <h3>Enlaces Sociales (Opcional)</h3>
+                  <p>Comparte un enlace para que los usuarios puedan seguir tu proyecto</p>
+                  
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label htmlFor="social_platform">Plataforma</label>
+                      <select
+                        id="social_platform"
+                        name="social_platform"
+                        value={createProjectForm.social_platform}
+                        onChange={handleFormChange}
+                      >
+                        <option value="">Selecciona una plataforma</option>
+                        <option value="instagram">Instagram</option>
+                        <option value="twitter">Twitter</option>
+                      </select>
+                    </div>
+
+                    <div className="form-group">
+                      <label htmlFor="social_url">Enlace</label>
+                      <input
+                        type="url"
+                        id="social_url"
+                        name="social_url"
+                        value={createProjectForm.social_url}
+                        onChange={handleFormChange}
+                        placeholder={createProjectForm.social_platform === 'instagram' ? 'https://instagram.com/tu_usuario' : 
+                                   createProjectForm.social_platform === 'twitter' ? 'https://twitter.com/tu_usuario' : 
+                                   'Selecciona primero una plataforma'}
+                        disabled={!createProjectForm.social_platform}
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 <div className="form-actions">
                   <button 
                     type="button" 
@@ -1553,7 +1698,12 @@ const AppContent = () => {
                             goal={project.goal}
                             daysLeft={project.daysLeft}
                             image={project.image}
+                            socialPlatform={project.socialPlatform}
+                            socialUrl={project.socialUrl}
+                            creatorWallet={project.creator_wallet}
+                            currentUserWallet={publicKey?.toString()}
                             onContribute={() => handleContribute(project)}
+                            onDelete={() => handleDeleteProject(project)}
                           />
                         ))}
                       </div>
@@ -1610,8 +1760,18 @@ const AppContent = () => {
                 featuredProjects.map((project, index) => (
                   <ProjectCard 
                     key={project.id || index} 
-                    {...project} 
+                    title={project.title}
+                    description={project.description}
+                    raised={project.raised}
+                    goal={project.goal}
+                    daysLeft={project.daysLeft}
+                    image={project.image}
+                    socialPlatform={project.socialPlatform}
+                    socialUrl={project.socialUrl}
+                    creatorWallet={project.creator_wallet}
+                    currentUserWallet={publicKey?.toString()}
                     onContribute={() => handleContribute(project)}
+                    onDelete={() => handleDeleteProject(project)}
                   />
                 ))
               )}

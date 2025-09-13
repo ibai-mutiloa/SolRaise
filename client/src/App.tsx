@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { Connection, clusterApiUrl, PublicKey, LAMPORTS_PER_SOL, Transaction, SystemProgram } from '@solana/web3.js'
+import { clusterApiUrl, PublicKey, LAMPORTS_PER_SOL, Transaction, SystemProgram } from '@solana/web3.js'
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base'
 import {
   ConnectionProvider,
@@ -9,8 +9,7 @@ import {
 } from '@solana/wallet-adapter-react'
 import {
   WalletModalProvider,
-  WalletMultiButton,
-  WalletDisconnectButton
+  WalletMultiButton
 } from '@solana/wallet-adapter-react-ui'
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom'
 import './App.css'
@@ -422,7 +421,6 @@ const DevnetFaucet = () => {
 
 // Componente para las tarjetas de proyectos
 const ProjectCard = ({ 
-  id,
   title, 
   description, 
   raised, 
@@ -436,7 +434,6 @@ const ProjectCard = ({
   onContribute,
   onDelete
 }: {
-  id: number
   title: string
   description: string
   raised: number
@@ -1375,7 +1372,7 @@ const AppContent = () => {
       })
 
       if (response.ok) {
-        const newProject = await response.json()
+        await response.json()
         addNotification({
           type: 'success',
           title: 'Éxito',
@@ -1695,7 +1692,6 @@ const AppContent = () => {
                         {userProjects.map((project) => (
                           <ProjectCard
                             key={project.id}
-                            id={project.id}
                             title={project.title}
                             description={project.description}
                             raised={project.raised}
@@ -1764,7 +1760,6 @@ const AppContent = () => {
                 featuredProjects.map((project, index) => (
                   <ProjectCard 
                     key={project.id || index} 
-                    id={project.id}
                     title={project.title}
                     description={project.description}
                     raised={project.raised}

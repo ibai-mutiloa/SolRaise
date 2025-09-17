@@ -1,5 +1,5 @@
 # SolRaise
-
+www.solraise.es
 SolRaise is an innovative fundraising platform built on the Solana blockchain designed to provide a transparent, secure, and accessible way to raise money for meaningful and positive projects. Our mission is to empower individuals, organizations, and communities by offering a decentralized space where supporters can confidently contribute to causes they believe in.
 
 At SolRaise, transparency is at the core of everything we do. Using blockchain technology, every transaction and fund movement is recorded on a public ledger, ensuring donors can track their contributions from start to finish. This level of accountability helps build trust between fundraisers and their supporters, eliminating concerns about misuse or lack of clarity.

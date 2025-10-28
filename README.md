@@ -10,3 +10,4 @@ We envision SolRaise as a tool to support a wide range of good causes — from c
 
 Our goal is to create a platform where raising funds is simple, transparent, and effective, fostering a global community dedicated to making positive change. Whether you’re launching a local charity drive or a large-scale social project, SolRaise provides the tools and transparency to help you succeed with confidence.
 
+<img width="1920" height="1080" alt="SOLRAISE-WEB ARCHITECTURE" src="https://github.com/user-attachments/assets/967409f7-ff3f-4663-8e24-b36c2a8a3854" />
